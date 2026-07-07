@@ -1,0 +1,12 @@
+{
+  "theme": "days",
+  "words": [
+    {"word": "Monday", "translation": "понедельник"},
+    {"word": "Tuesday", "translation": "вторник"},
+    {"word": "Wednesday", "translation": "среда"},
+    {"word": "Thursday", "translation": "четверг"},
+    {"word": "Friday", "translation": "пятница"},
+    {"word": "Saturday", "translation": "суббота"},
+    {"word": "Sunday", "translation": "воскресенье"}
+  ]
+}

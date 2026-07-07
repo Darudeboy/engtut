@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+data/english_tutor.db
+data/test*.db
+data/audio/
+*.mp3
+.idea/
+.vscode/

@@ -1,0 +1,15 @@
+{
+  "theme": "food",
+  "words": [
+    {"word": "bread", "translation": "хлеб"},
+    {"word": "water", "translation": "вода"},
+    {"word": "milk", "translation": "молоко"},
+    {"word": "apple", "translation": "яблоко"},
+    {"word": "coffee", "translation": "кофе"},
+    {"word": "tea", "translation": "чай"},
+    {"word": "egg", "translation": "яйцо"},
+    {"word": "rice", "translation": "рис"},
+    {"word": "fish", "translation": "рыба"},
+    {"word": "meat", "translation": "мясо"}
+  ]
+}

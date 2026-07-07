@@ -1,0 +1,15 @@
+{
+  "theme": "numbers",
+  "words": [
+    {"word": "one", "translation": "один"},
+    {"word": "two", "translation": "два"},
+    {"word": "three", "translation": "три"},
+    {"word": "four", "translation": "четыре"},
+    {"word": "five", "translation": "пять"},
+    {"word": "six", "translation": "шесть"},
+    {"word": "seven", "translation": "семь"},
+    {"word": "eight", "translation": "восемь"},
+    {"word": "nine", "translation": "девять"},
+    {"word": "ten", "translation": "десять"}
+  ]
+}

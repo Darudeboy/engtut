@@ -1,0 +1,13 @@
+{
+  "theme": "travel",
+  "words": [
+    {"word": "ticket", "translation": "билет"},
+    {"word": "airport", "translation": "аэропорт"},
+    {"word": "train", "translation": "поезд"},
+    {"word": "bus", "translation": "автобус"},
+    {"word": "hotel", "translation": "отель"},
+    {"word": "map", "translation": "карта"},
+    {"word": "passport", "translation": "паспорт"},
+    {"word": "trip", "translation": "поездка"}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "theme": "home",
+  "words": [
+    {"word": "house", "translation": "дом"},
+    {"word": "room", "translation": "комната"},
+    {"word": "door", "translation": "дверь"},
+    {"word": "window", "translation": "окно"},
+    {"word": "table", "translation": "стол"},
+    {"word": "chair", "translation": "стул"},
+    {"word": "bed", "translation": "кровать"},
+    {"word": "kitchen", "translation": "кухня"}
+  ]
+}

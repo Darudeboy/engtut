@@ -1,0 +1,13 @@
+{
+  "theme": "family",
+  "words": [
+    {"word": "mother", "translation": "мама"},
+    {"word": "father", "translation": "папа"},
+    {"word": "sister", "translation": "сестра"},
+    {"word": "brother", "translation": "брат"},
+    {"word": "son", "translation": "сын"},
+    {"word": "daughter", "translation": "дочь"},
+    {"word": "family", "translation": "семья"},
+    {"word": "parents", "translation": "родители"}
+  ]
+}
