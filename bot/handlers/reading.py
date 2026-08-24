@@ -2,7 +2,7 @@ import secrets
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, FSInputFile, Message
+from aiogram.types import CallbackQuery, Message
 
 from bot.utils.context import get_app_context
 from bot.utils.keyboards import options_keyboard
@@ -11,11 +11,12 @@ from bot.utils.states import ReadingStates
 router = Router()
 
 GOAL_READING_TOPICS = {
-    "travel": "a simple trip",
-    "work": "a simple work day",
-    "hobby": "free time and hobbies",
-    "exam": "daily routine",
+    "travel": ["an airport delay", "a hotel stay", "asking for directions", "a weekend trip"],
+    "work": ["a team project", "a busy workday", "a meeting", "working from home"],
+    "hobby": ["a new hobby", "weekend plans", "a sports club", "books and films"],
+    "exam": ["daily routines", "shopping", "health and appointments", "city life"],
 }
+DEFAULT_READING_TOPICS = ["daily routines", "food and cooking", "friends", "the weather"]
 
 
 @router.message(F.text == "📖 Чтение")
@@ -31,12 +32,23 @@ async def start_reading(
     session = ctx.user_sessions.setdefault(user_id, {})
     if not part_of_daily and session.get("daily"):
         session["daily"]["active"] = False
-    topic = GOAL_READING_TOPICS.get(profile.goal, "greetings and daily life")
-    lesson = await ctx.deepseek.generate_reading_lesson(topic, profile.level)
+    attempts = await ctx.db.get_lesson_attempt_count(user_id, "reading")
+    topics = GOAL_READING_TOPICS.get(profile.goal, DEFAULT_READING_TOPICS)
+    topic = topics[attempts % len(topics)]
+    variant = attempts % 6
+    recent_words = await ctx.vocabulary.get_recent_words(user_id, limit=5)
+    lesson = await ctx.deepseek.generate_reading_lesson(
+        topic,
+        profile.level,
+        variant,
+        [item["word"] for item in recent_words],
+    )
     session.update(
         {
             "reading": lesson,
             "reading_id": secrets.token_hex(4),
+            "reading_topic": topic,
+            "reading_variant": variant,
             "q_index": 0,
             "score": 0,
         }
@@ -50,14 +62,7 @@ async def start_reading(
         f"{lesson.get('text', '')}\n\n"
         f"🔑 Ключевые слова:\n{keywords}"
     )
-    await message.answer(text)
-    keywords_list = lesson.get("keywords", [])
-    if keywords_list:
-        first_word = keywords_list[0]["word"]
-        dict_data = await ctx.dictionary.lookup(first_word)
-        audio_path = await ctx.tts.get_word_audio(first_word, dict_data.get("audio_url", ""))
-        if audio_path:
-            await message.answer_voice(FSInputFile(audio_path))
+    await message.answer(text, parse_mode=None)
     await _send_question(message, user_id)
 
 
@@ -93,7 +98,10 @@ async def reading_answer(callback: CallbackQuery, state: FSMContext) -> None:
         feedback = "✅ Верно!"
     else:
         correct_option = question["options"][correct_index]
-        feedback = f"Почти! Правильно: {correct_option}\n{question.get('explanation_ru', '')}"
+        feedback = f"Почти! Правильно: {correct_option}"
+    explanation = question.get("explanation_ru", "")
+    if explanation:
+        feedback += f"\n{explanation}"
 
     q_index += 1
     session["q_index"] = q_index
@@ -108,7 +116,16 @@ async def reading_answer(callback: CallbackQuery, state: FSMContext) -> None:
         score = session.get("score", 0)
         total = len(questions) or 1
         pct = round(score / total * 100, 1)
-        await ctx.progress.record_lesson(user_id, "reading", lesson.get("title", "reading"), score=pct)
+        lesson_id = (
+            f"{session.get('reading_topic', 'reading')}:"
+            f"{session.get('reading_variant', 0)}"
+        )
+        await ctx.progress.record_lesson(
+            user_id,
+            "reading",
+            lesson_id,
+            score=pct,
+        )
         await ctx.db.touch_activity(user_id)
         await ctx.db.unlock_achievement(user_id, "first_lesson")
         await state.clear()
@@ -134,7 +151,8 @@ async def _send_question(message: Message, user_id: int) -> None:
     question = questions[q_index]
     token = f"{session.get('reading_id')}-{q_index}"
     await message.answer(
-        f"❓ {question['question']}",
+        f"❓ Вопрос {q_index + 1}/{len(questions)}\n{question['question']}",
+        parse_mode=None,
         reply_markup=options_keyboard(
             question["options"],
             "reading:answer",

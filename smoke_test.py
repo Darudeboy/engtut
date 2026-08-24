@@ -8,10 +8,12 @@ from pathlib import Path
 
 from bot.config import Settings
 from bot.handlers.exam import exam_passed
+from bot.handlers.writing import _normalize
 from bot.models.database import Database, _asyncpg_url, _postgres_query
 from bot.models.progress import ProgressRepository
 from bot.models.vocabulary import VocabularyRepository
 from bot.services.deepseek import DeepSeekService
+from bot.utils.content import WRITING_STAGES
 from bot.utils.exam_content import EXAMS, SECTION_LABELS
 from bot.webhook import _webhook_secret
 
@@ -31,6 +33,10 @@ async def test_database() -> None:
             weekly = await progress.get_weekly_summary_data(12345)
             assert weekly["lessons_completed"] == 1
             assert weekly["weekly_modules"][0]["module"] == "reading"
+            await progress.record_lesson(
+                12345, "writing", "test_writing", score=70.0
+            )
+            assert await db.get_lesson_attempt_count(12345, "writing") == 1
 
             vocabulary = VocabularyRepository(db)
             await vocabulary.add_word(
@@ -40,12 +46,13 @@ async def test_database() -> None:
                 12345, "hello", "привет", "greetings"
             )
             assert await vocabulary.get_words_learned_today(12345) == 1
+            assert (await vocabulary.get_recent_words(12345))[0]["word"] == "hello"
             assert len(await vocabulary.get_due_reviews(12345)) == 0
             stats = await db.get_stats(12345)
             assert stats["words_introduced"] == 1
             assert stats["words_learning"] == 1
             assert stats["words_mastered"] == 0
-            assert stats["accuracy"] == 100.0
+            assert stats["accuracy"] == 85.0
 
             await db.execute(
                 "UPDATE user_words SET next_review = ? WHERE user_id = ?",
@@ -96,7 +103,40 @@ def test_deepseek_fallback() -> None:
     service = DeepSeekService(settings)
     lesson = asyncio.run(service.generate_reading_lesson("greetings"))
     assert "questions" in lesson
-    assert len(lesson["questions"]) >= 1
+    assert len(lesson["questions"]) == 4
+    grammar = asyncio.run(
+        service.generate_grammar_exercise("to be", "Pre-A1", 0)
+    )
+    assert len(grammar["questions"]) == 5
+    writing = asyncio.run(
+        service.check_writing_task(
+            prompt="Describe your morning.",
+            requirements="Write two actions.",
+            reference="I get up and have breakfast.",
+            user_answer="I get up early and have breakfast with my family.",
+            level="A1",
+            min_words=8,
+        )
+    )
+    assert writing["status"] == "correct"
+    listening = asyncio.run(
+        service.generate_listening_lesson("daily life", "A1", 0)
+    )
+    assert listening["transcript"]
+    assert len(listening["questions"]) == 3
+    dialogue = asyncio.run(
+        service.assess_dialogue(
+            "coffee",
+            [
+                {"role": "user", "content": "I would like a coffee."},
+                {"role": "user", "content": "A small coffee, please."},
+                {"role": "user", "content": "How much is it?"},
+            ],
+            "A1",
+            ["order a drink", "choose a size", "ask about the price"],
+        )
+    )
+    assert 0 <= dialogue["score"] <= 100
     print("deepseek fallback: OK")
 
 
@@ -142,6 +182,24 @@ def test_exam_content() -> None:
     print("exam content: OK")
 
 
+def test_writing_content() -> None:
+    assert sorted(WRITING_STAGES) == list(range(1, 9))
+    task_ids: list[str] = []
+    for tasks in WRITING_STAGES.values():
+        assert len(tasks) >= 3
+        for task in tasks:
+            task_ids.append(task["id"])
+            if task.get("free"):
+                assert task["min_words"] > 0
+                assert task["requirements"]
+                assert task["reference"]
+            else:
+                assert task["answer"]
+    assert len(task_ids) == len(set(task_ids))
+    assert _normalize("I am a student.") == _normalize("I am a student")
+    print(f"writing content: OK ({len(task_ids)} tasks)")
+
+
 def test_webhook_secret() -> None:
     original = os.environ.get("WEBHOOK_SECRET")
     try:
@@ -176,6 +234,7 @@ if __name__ == "__main__":
     test_imports()
     test_wordlists()
     test_exam_content()
+    test_writing_content()
     test_webhook_secret()
     test_postgres_compatibility_helpers()
     test_deepseek_fallback()

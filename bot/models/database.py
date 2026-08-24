@@ -390,7 +390,7 @@ class Database:
             FROM progress
             WHERE user_id = ?
               AND score IS NOT NULL
-              AND module IN ('reading', 'grammar', 'writing', 'listening')
+              AND module IN ('reading', 'grammar', 'writing', 'listening', 'dialogue')
             """,
             (user_id,),
         )
@@ -475,6 +475,16 @@ class Database:
         result = dict(row)
         result["section_scores"] = json.loads(result.get("section_scores") or "{}")
         return result
+
+    async def get_lesson_attempt_count(self, user_id: int, module: str) -> int:
+        row = await self.fetchone(
+            """
+            SELECT COUNT(*) AS cnt FROM progress
+            WHERE user_id = ? AND module = ? AND completed = 1
+            """,
+            (user_id, module),
+        )
+        return int(row["cnt"]) if row else 0
 
     async def get_cache(self, cache_key: str) -> dict[str, Any] | None:
         row = await self.fetchone("SELECT payload FROM exercise_cache WHERE cache_key = ?", (cache_key,))

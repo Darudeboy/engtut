@@ -4,7 +4,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from bot.utils.content import GRAMMAR_TOPICS
+from bot.utils.content import GRAMMAR_TOPICS_BY_LEVEL
 from bot.utils.context import get_app_context
 from bot.utils.keyboards import options_keyboard
 from bot.utils.states import GrammarStates
@@ -24,13 +24,23 @@ async def start_grammar(
     if not part_of_daily and session.get("daily"):
         session["daily"]["active"] = False
     user = await ctx.db.get_or_create_user(user_id)
-    topic_index = int(user.get("grammar_topic_index") or 0) % len(GRAMMAR_TOPICS)
-    topic = GRAMMAR_TOPICS[topic_index]
     level = user.get("level", "Pre-A1")
-    cache_key = f"grammar:{level}:{topic}"
+    topics = GRAMMAR_TOPICS_BY_LEVEL.get(
+        level,
+        GRAMMAR_TOPICS_BY_LEVEL["A1"],
+    )
+    topic_index = int(user.get("grammar_topic_index") or 0) % len(topics)
+    topic = topics[topic_index]
+    attempts = await ctx.db.get_lesson_attempt_count(user_id, "grammar")
+    variant = attempts % 3
+    cache_key = f"grammar:{level}:{topic}:{variant}"
     lesson = await ctx.db.get_cache(cache_key)
     if not lesson:
-        lesson = await ctx.deepseek.generate_grammar_exercise(topic, level)
+        lesson = await ctx.deepseek.generate_grammar_exercise(
+            topic,
+            level,
+            variant,
+        )
         await ctx.db.set_cache(cache_key, lesson)
 
     session.update(
@@ -39,13 +49,18 @@ async def start_grammar(
             "grammar_id": secrets.token_hex(4),
             "topic": topic,
             "topic_index": topic_index,
+            "topic_count": len(topics),
+            "grammar_variant": variant,
             "q_index": 0,
             "score": 0,
             "mistakes": 0,
         }
     )
     await state.set_state(GrammarStates.answering)
-    await message.answer(f"📚 Тема: {topic}\n\n{lesson.get('explanation_ru', '')}")
+    await message.answer(
+        f"📚 Тема: {topic}\n\n{lesson.get('explanation_ru', '')}",
+        parse_mode=None,
+    )
     await _send_grammar_question(message, user_id)
 
 
@@ -80,11 +95,11 @@ async def grammar_answer(callback: CallbackQuery, state: FSMContext) -> None:
         feedback = "✅ Верно!"
     else:
         session["mistakes"] = int(session.get("mistakes", 0)) + 1
-        hint = question.get("hint_ru", "")
         correct_option = question["options"][correct_idx]
         feedback = f"Почти! Правильно: {correct_option}"
-        if hint:
-            feedback += f"\n💡 {hint}"
+    hint = question.get("hint_ru", "")
+    if hint:
+        feedback += f"\n💡 {hint}"
 
     q_index += 1
     session["q_index"] = q_index
@@ -101,9 +116,20 @@ async def grammar_answer(callback: CallbackQuery, state: FSMContext) -> None:
         pct = round(score / total * 100, 1)
         topic_index = int(session.get("topic_index", 0))
         if pct >= 80:
-            topic_index = (topic_index + 1) % len(GRAMMAR_TOPICS)
+            topic_index = (
+                topic_index + 1
+            ) % int(session.get("topic_count", 1))
             await ctx.db.update_user(user_id, grammar_topic_index=topic_index)
-        await ctx.progress.record_lesson(user_id, "grammar", session.get("topic", "grammar"), score=pct)
+        lesson_id = (
+            f"{session.get('topic', 'grammar')}:"
+            f"{session.get('grammar_variant', 0)}"
+        )
+        await ctx.progress.record_lesson(
+            user_id,
+            "grammar",
+            lesson_id,
+            score=pct,
+        )
         await ctx.db.touch_activity(user_id)
         await state.clear()
         await callback.message.answer(f"📚 Грамматика завершена: {score}/{total} ({pct}%)")
@@ -124,7 +150,8 @@ async def _send_grammar_question(message: Message, user_id: int) -> None:
     question = questions[q_index]
     token = f"{session.get('grammar_id')}-{q_index}"
     await message.answer(
-        f"✏️ {question['prompt']}",
+        f"✏️ Вопрос {q_index + 1}/{len(questions)}\n{question['prompt']}",
+        parse_mode=None,
         reply_markup=options_keyboard(
             question["options"],
             "grammar:answer",

@@ -76,6 +76,28 @@ class VocabularyRepository:
         )
         return row is not None
 
+    async def get_recent_words(
+        self,
+        user_id: int,
+        limit: int = 5,
+    ) -> list[dict[str, str]]:
+        rows = await self.db.fetchall(
+            """
+            SELECT word, translation FROM user_words
+            WHERE user_id = ?
+            ORDER BY learned_at DESC, id DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
+        return [
+            {
+                "word": str(row["word"]),
+                "translation": str(row["translation"]),
+            }
+            for row in rows
+        ]
+
     async def get_due_reviews(self, user_id: int, limit: int = 5) -> list[dict[str, Any]]:
         rows = await self.db.fetchall(
             """

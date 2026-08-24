@@ -60,8 +60,10 @@ def dialogue_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def scenario_keyboard() -> InlineKeyboardMarkup:
-    scenarios = [
+def scenario_keyboard(
+    scenarios: list[tuple[str, str]] | None = None,
+) -> InlineKeyboardMarkup:
+    scenarios = scenarios or [
         ("👋 Знакомство", "introduction"),
         ("☕ Заказ кофе", "coffee"),
         ("🎫 Покупка билета", "ticket"),
