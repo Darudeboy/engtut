@@ -60,6 +60,28 @@ python -m bot.main
 | `/stats` | Статистика и достижения |
 | `/help` | Справка |
 
+## Бесплатный деплой на Render
+
+Создайте **Web Service** из GitHub-репозитория и укажите:
+
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `python -m bot.webhook`
+- Health Check Path: `/health`
+
+Добавьте секреты в Render Environment:
+
+- `BOT_TOKEN`
+- `DEEPSEEK_API_KEY`
+- `WEBHOOK_SECRET` (необязательно; если пусто, создаётся стабильное значение)
+
+Render автоматически передаёт публичный адрес в `RENDER_EXTERNAL_URL`, поэтому
+`WEBHOOK_BASE_URL` задавать не требуется. Локальный polling-запуск
+`python -m bot.main` при этом продолжает работать.
+
+Важно: файловая система бесплатного Web Service временная. SQLite-прогресс может
+быть потерян после перезапуска или нового деплоя; для постоянного хранения нужен
+PostgreSQL или persistent disk.
+
 ## Деплой на VPS (systemd)
 
 ```bash
@@ -94,6 +116,7 @@ systemctl restart english-tutor
 english-tutor-bot/
 ├── bot/
 │   ├── main.py
+│   ├── webhook.py      # Webhook entrypoint для Render
 │   ├── config.py
 │   ├── handlers/       # Модули обучения
 │   ├── services/       # DeepSeek, Dictionary, TTS, SM-2
@@ -115,6 +138,9 @@ english-tutor-bot/
 | `DEEPSEEK_API_KEY` | Нет* | Ключ DeepSeek API |
 | `DEEPSEEK_BASE_URL` | Нет | По умолчанию `https://api.deepseek.com/v1` |
 | `DATABASE_PATH` | Нет | Путь к SQLite (по умолчанию `data/english_tutor.db`) |
+| `WEBHOOK_BASE_URL` | Нет | Публичный URL вне Render |
+| `WEBHOOK_PATH` | Нет | Путь webhook, по умолчанию `/webhook` |
+| `WEBHOOK_SECRET` | Нет | Секрет проверки запросов Telegram |
 
 \* Без DeepSeek API бот работает на fallback-контенте.
 
