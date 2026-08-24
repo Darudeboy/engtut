@@ -3,19 +3,14 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from bot.utils.context import AppContext
+from bot.utils.context import get_app_context
 from bot.utils.states import DailyStates
 
 router = Router()
 
-
-def get_ctx(message: Message) -> AppContext:
-    return message.bot["app_context"]
-
-
 @router.message(Command("daily"))
 async def daily_session(message: Message, state: FSMContext) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     user_id = message.from_user.id
     profile = await ctx.users.get_profile(user_id, message.from_user.username)
 

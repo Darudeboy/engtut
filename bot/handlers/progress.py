@@ -3,19 +3,14 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from bot.utils.content import ACHIEVEMENTS
-from bot.utils.context import AppContext
+from bot.utils.context import get_app_context
 
 router = Router()
-
-
-def get_ctx(message: Message) -> AppContext:
-    return message.bot["app_context"]
-
 
 @router.message(Command("stats"))
 @router.message(F.text == "📊 Мой прогресс")
 async def show_stats(message: Message) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     user_id = message.from_user.id
     stats = await ctx.db.get_stats(user_id)
     achievements = stats.get("achievements", [])

@@ -1,6 +1,19 @@
 from dataclasses import dataclass, field
 
 from bot.config import Settings
+
+_app_context: "AppContext | None" = None
+
+
+def set_app_context(ctx: "AppContext") -> None:
+    global _app_context
+    _app_context = ctx
+
+
+def get_app_context() -> "AppContext":
+    if _app_context is None:
+        raise RuntimeError("App context is not initialized")
+    return _app_context
 from bot.models.database import Database
 from bot.models.progress import ProgressRepository
 from bot.models.user import UserRepository

@@ -3,20 +3,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from bot.utils.content import GRAMMAR_TOPICS
-from bot.utils.context import AppContext
+from bot.utils.context import get_app_context
 from bot.utils.keyboards import options_keyboard
 from bot.utils.states import GrammarStates
 
 router = Router()
 
-
-def get_ctx(message_or_query) -> AppContext:
-    return message_or_query.bot["app_context"]
-
-
 @router.message(F.text == "📚 Грамматика")
 async def start_grammar(message: Message, state: FSMContext) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     user_id = message.from_user.id
     user = await ctx.db.get_or_create_user(user_id)
     topic_index = int(user.get("grammar_topic_index") or 0) % len(GRAMMAR_TOPICS)
@@ -42,7 +37,7 @@ async def start_grammar(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(GrammarStates.answering, F.data.startswith("grammar:answer:"))
 async def grammar_answer(callback: CallbackQuery, state: FSMContext) -> None:
-    ctx = get_ctx(callback)
+    ctx = get_app_context()
     user_id = callback.from_user.id
     session = ctx.user_sessions.get(user_id, {})
     lesson = session.get("grammar", {})
@@ -87,7 +82,7 @@ async def grammar_answer(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _send_grammar_question(message: Message, user_id: int) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     session = ctx.user_sessions.get(user_id, {})
     lesson = session.get("grammar", {})
     questions = lesson.get("questions", [])

@@ -121,6 +121,11 @@ english-tutor-bot/
 ## Troubleshooting
 
 - **Бот не отвечает** — проверьте `BOT_TOKEN` и что процесс запущен
+- **Cannot connect to api.telegram.org** — Telegram API заблокирован. Включите VPN или добавьте в `.env`:
+  ```
+  BOT_PROXY=socks5://127.0.0.1:1080
+  ```
+  Для SOCKS5 установите: `pip install aiohttp-socks`
 - **Ошибки DeepSeek** — проверьте `DEEPSEEK_API_KEY`; бот продолжит работу с заготовками
 - **Нет озвучки** — gTTS требует интернет; проверьте доступ к сети
 - **Логи systemd** — `journalctl -u english-tutor -f`

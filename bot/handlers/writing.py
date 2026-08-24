@@ -3,19 +3,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.utils.content import WRITING_LEVELS
-from bot.utils.context import AppContext
+from bot.utils.context import get_app_context
 from bot.utils.states import WritingStates
 
 router = Router()
 
-
-def get_ctx(message: Message) -> AppContext:
-    return message.bot["app_context"]
-
-
 @router.message(F.text == "✍️ Письмо")
 async def start_writing(message: Message, state: FSMContext) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     user_id = message.from_user.id
     profile = await ctx.users.get_profile(user_id)
     level = min(profile.writing_level, 5)
@@ -30,7 +25,7 @@ async def start_writing(message: Message, state: FSMContext) -> None:
 
 @router.message(WritingStates.answering)
 async def writing_answer(message: Message, state: FSMContext) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     user_id = message.from_user.id
     session = ctx.user_sessions.get(user_id, {})
     task = session.get("task", {})

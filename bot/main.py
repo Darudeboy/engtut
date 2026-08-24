@@ -4,7 +4,9 @@ import sys
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from bot.config import get_settings
@@ -19,7 +21,7 @@ from bot.handlers.reading import router as reading_router
 from bot.handlers.vocabulary import router as vocabulary_router
 from bot.handlers.writing import router as writing_router
 from bot.services.reminders import ReminderService
-from bot.utils.context import AppContext
+from bot.utils.context import AppContext, set_app_context
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,18 +31,28 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def create_bot(settings) -> Bot:
+    session_kwargs = {}
+    if settings.bot_proxy:
+        session_kwargs["proxy"] = settings.bot_proxy
+        logger.info("Using proxy for Telegram API: %s", settings.bot_proxy)
+    session = AiohttpSession(**session_kwargs)
+    return Bot(
+        token=settings.bot_token,
+        session=session,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+
+
 async def main() -> None:
     settings = get_settings()
     logging.getLogger().setLevel(settings.log_level)
 
     app_context = AppContext.build(settings)
     await app_context.db.connect()
+    set_app_context(app_context)
 
-    bot = Bot(
-        token=settings.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
-    bot["app_context"] = app_context
+    bot = create_bot(settings)
 
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(onboarding_router)
@@ -60,6 +72,19 @@ async def main() -> None:
     logger.info("English Tutor Bot started")
     try:
         await dp.start_polling(bot)
+    except TelegramNetworkError as exc:
+        logger.error("Cannot connect to Telegram API: %s", exc)
+        print(
+            "\nНе удалось подключиться к api.telegram.org.\n"
+            "Возможные решения:\n"
+            "1. Включите VPN\n"
+            "2. Укажите прокси в .env:\n"
+            "   BOT_PROXY=socks5://127.0.0.1:1080\n"
+            "   или BOT_PROXY=http://127.0.0.1:8080\n"
+            "3. Проверьте интернет и файрвол\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
     finally:
         await reminders.stop()
         await app_context.db.close()

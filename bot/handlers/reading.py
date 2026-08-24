@@ -2,20 +2,15 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
-from bot.utils.context import AppContext
+from bot.utils.context import get_app_context
 from bot.utils.keyboards import options_keyboard, skip_keyboard
 from bot.utils.states import ReadingStates
 
 router = Router()
 
-
-def get_ctx(message_or_query) -> AppContext:
-    return message_or_query.bot["app_context"]
-
-
 @router.message(F.text == "📖 Чтение")
 async def start_reading(message: Message, state: FSMContext) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     user_id = message.from_user.id
     profile = await ctx.users.get_profile(user_id)
     lesson = await ctx.deepseek.generate_reading_lesson("greetings", profile.level)
@@ -42,7 +37,7 @@ async def start_reading(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(ReadingStates.answering, F.data.startswith("reading:answer:"))
 async def reading_answer(callback: CallbackQuery, state: FSMContext) -> None:
-    ctx = get_ctx(callback)
+    ctx = get_app_context()
     user_id = callback.from_user.id
     session = ctx.user_sessions.get(user_id, {})
     lesson = session.get("reading", {})
@@ -81,7 +76,7 @@ async def reading_answer(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _send_question(message: Message, user_id: int) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     session = ctx.user_sessions.get(user_id, {})
     lesson = session.get("reading", {})
     questions = lesson.get("questions", [])

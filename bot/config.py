@@ -25,6 +25,7 @@ class Settings:
     deepseek_model: str
     database_path: Path
     log_level: str
+    bot_proxy: str | None = None
     new_words_per_day: int = 5
     review_words_per_session: int = 5
     daily_goal_minutes: int = 15
@@ -43,4 +44,5 @@ def get_settings() -> Settings:
         deepseek_model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
         database_path=Path(os.getenv("DATABASE_PATH", str(DATA_DIR / "english_tutor.db"))),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
+        bot_proxy=os.getenv("BOT_PROXY") or os.getenv("HTTPS_PROXY") or None,
     )

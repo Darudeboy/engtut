@@ -1,15 +1,17 @@
 [Unit]
 Description=English Tutor Telegram Bot
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/english-tutor-bot
-ExecStart=/root/english-tutor-bot/venv/bin/python -m bot.main
+WorkingDirectory=/opt/english-tutor-bot
+EnvironmentFile=/opt/english-tutor-bot/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/english-tutor-bot/venv/bin/python -m bot.main
 Restart=always
 RestartSec=10
-Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target

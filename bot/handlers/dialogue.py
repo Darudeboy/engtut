@@ -4,7 +4,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from bot.utils.context import AppContext
+from bot.utils.context import get_app_context
 from bot.utils.keyboards import dialogue_keyboard, scenario_keyboard
 from bot.utils.states import DialogueStates
 
@@ -17,11 +17,6 @@ SCENARIO_ROLES = {
     "small_talk": "a friendly neighbor",
 }
 
-
-def get_ctx(message_or_query) -> AppContext:
-    return message_or_query.bot["app_context"]
-
-
 @router.message(F.text == "💬 Диалог")
 async def start_dialogue(message: Message, state: FSMContext) -> None:
     await message.answer("Выбери сценарий диалога:", reply_markup=scenario_keyboard())
@@ -29,7 +24,7 @@ async def start_dialogue(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("dialogue:scenario:"))
 async def choose_scenario(callback: CallbackQuery, state: FSMContext) -> None:
-    ctx = get_ctx(callback)
+    ctx = get_app_context()
     user_id = callback.from_user.id
     scenario = callback.data.split(":")[-1]
     role = SCENARIO_ROLES.get(scenario, "a friend")
@@ -50,7 +45,7 @@ async def choose_scenario(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(DialogueStates.chatting, F.data == "dialogue:hint")
 async def dialogue_hint(callback: CallbackQuery) -> None:
-    ctx = get_ctx(callback)
+    ctx = get_app_context()
     user_id = callback.from_user.id
     session = ctx.user_sessions.get(user_id, {})
     history = session.get("dialogue_history", [])
@@ -71,7 +66,7 @@ async def finish_dialogue(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(DialogueStates.chatting)
 async def dialogue_message(message: Message, state: FSMContext) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     user_id = message.from_user.id
     session = ctx.user_sessions.get(user_id, {})
     history = session.get("dialogue_history", [])
@@ -94,7 +89,7 @@ async def dialogue_message(message: Message, state: FSMContext) -> None:
 async def _complete_dialogue(event, state: FSMContext) -> None:
     from aiogram.types import CallbackQuery, Message
 
-    ctx = get_ctx(event)
+    ctx = get_app_context()
     user_id = event.from_user.id
     session = ctx.user_sessions.get(user_id, {})
     history = session.get("dialogue_history", [])

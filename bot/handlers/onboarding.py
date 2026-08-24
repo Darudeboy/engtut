@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from bot.utils.content import LEVEL_QUESTIONS
-from bot.utils.context import AppContext
+from bot.utils.context import get_app_context
 from bot.utils.keyboards import goal_keyboard, main_menu_keyboard, options_keyboard, reminder_keyboard
 from bot.utils.states import OnboardingStates
 
@@ -17,14 +17,9 @@ GOAL_LABELS = {
     "exam": "Экзамен",
 }
 
-
-def get_ctx(message_or_query) -> AppContext:
-    return message_or_query.bot["app_context"]
-
-
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     profile = await ctx.users.get_profile(message.from_user.id, message.from_user.username)
     if profile.onboarding_completed:
         await message.answer(
@@ -46,7 +41,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(OnboardingStates.level_test, F.data.startswith("onboard:level:"))
 async def level_answer(callback: CallbackQuery, state: FSMContext) -> None:
-    ctx = get_ctx(callback)
+    ctx = get_app_context()
     data = await state.get_data()
     q_index = int(data.get("level_q", 0))
     score = int(data.get("level_score", 0))
@@ -89,7 +84,7 @@ async def choose_goal(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(OnboardingStates.reminder, F.data.startswith("onboard:reminder:"))
 async def choose_reminder(callback: CallbackQuery, state: FSMContext) -> None:
-    ctx = get_ctx(callback)
+    ctx = get_app_context()
     reminder = callback.data.split(":")[-1]
     reminder_time = None if reminder == "none" else reminder
     data = await state.get_data()

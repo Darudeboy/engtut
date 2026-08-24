@@ -7,16 +7,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
 from bot.config import WORDLISTS_DIR
-from bot.utils.context import AppContext
+from bot.utils.context import get_app_context
 from bot.utils.keyboards import review_quality_keyboard
 from bot.utils.states import VocabularyStates
 
 router = Router()
-
-
-def get_ctx(message_or_query) -> AppContext:
-    return message_or_query.bot["app_context"]
-
 
 def _load_wordlists() -> list[dict]:
     words = []
@@ -30,7 +25,7 @@ def _load_wordlists() -> list[dict]:
 
 @router.message(F.text == "🔤 Слова")
 async def start_vocabulary(message: Message, state: FSMContext) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     user_id = message.from_user.id
     due = await ctx.vocabulary.get_due_reviews(user_id, limit=ctx.settings.review_words_per_session)
     if due:
@@ -101,7 +96,7 @@ async def start_vocabulary(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(VocabularyStates.reviewing, F.data.startswith("vocab:review:"))
 async def review_word(callback: CallbackQuery, state: FSMContext) -> None:
-    ctx = get_ctx(callback)
+    ctx = get_app_context()
     user_id = callback.from_user.id
     _, _, word_id, quality = callback.data.split(":")
     await ctx.vocabulary.review_word(user_id, int(word_id), int(quality))
@@ -121,7 +116,7 @@ async def review_word(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _send_review_card(message: Message, user_id: int) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     session = ctx.user_sessions.get(user_id, {})
     reviews = session.get("vocab_reviews", [])
     idx = int(session.get("review_index", 0))

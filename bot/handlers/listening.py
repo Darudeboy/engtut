@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from bot.utils.content import LISTENING_RESOURCES
-from bot.utils.context import AppContext
+from bot.utils.context import get_app_context
 from bot.utils.keyboards import options_keyboard
 from bot.utils.states import ListeningStates
 
@@ -22,14 +22,9 @@ LISTENING_QUESTIONS = [
     },
 ]
 
-
-def get_ctx(message_or_query) -> AppContext:
-    return message_or_query.bot["app_context"]
-
-
 @router.message(F.text == "🎧 Аудирование")
 async def start_listening(message: Message, state: FSMContext) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     user_id = message.from_user.id
     resource = LISTENING_RESOURCES[0]
     text = (
@@ -50,7 +45,7 @@ async def start_listening(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(ListeningStates.answering, F.data.startswith("listening:answer:"))
 async def listening_answer(callback: CallbackQuery, state: FSMContext) -> None:
-    ctx = get_ctx(callback)
+    ctx = get_app_context()
     user_id = callback.from_user.id
     session = ctx.user_sessions.get(user_id, {})
     q_index = int(session.get("listening_q", 0))
@@ -81,7 +76,7 @@ async def listening_answer(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 async def _send_listening_question(message: Message, user_id: int) -> None:
-    ctx = get_ctx(message)
+    ctx = get_app_context()
     session = ctx.user_sessions.get(user_id, {})
     q_index = int(session.get("listening_q", 0))
     question = LISTENING_QUESTIONS[q_index]
