@@ -33,3 +33,7 @@ class ListeningStates(StatesGroup):
 
 class DailyStates(StatesGroup):
     in_session = State()
+
+
+class ExamStates(StatesGroup):
+    answering = State()

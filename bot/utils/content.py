@@ -4,6 +4,8 @@ ACHIEVEMENTS = {
     "seven_day_streak": "🔥 7 дней подряд",
     "first_dialogue": "💬 Первый диалог",
     "writing_level_3": "✍️ Уровень письма 3",
+    "level_a1": "🎓 Уровень A1",
+    "level_a2": "🏅 Уровень A2",
 }
 
 GRAMMAR_TOPICS = [

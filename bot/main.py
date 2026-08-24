@@ -12,6 +12,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from bot.config import get_settings
 from bot.handlers.daily import router as daily_router
 from bot.handlers.dialogue import router as dialogue_router
+from bot.handlers.exam import router as exam_router
 from bot.handlers.grammar import router as grammar_router
 from bot.handlers.listening import router as listening_router
 from bot.handlers.menu import router as menu_router
@@ -57,6 +58,7 @@ async def main() -> None:
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(onboarding_router)
     dp.include_router(daily_router)
+    dp.include_router(exam_router)
     dp.include_router(menu_router)
     dp.include_router(reading_router)
     dp.include_router(vocabulary_router)

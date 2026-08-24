@@ -60,6 +60,20 @@ CREATE TABLE IF NOT EXISTS progress (
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
+CREATE TABLE IF NOT EXISTS exam_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    source_level TEXT,
+    target_level TEXT,
+    score INTEGER,
+    total INTEGER,
+    percentage REAL,
+    passed INTEGER DEFAULT 0,
+    section_scores TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
 CREATE TABLE IF NOT EXISTS dialogues (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -134,6 +148,20 @@ CREATE TABLE IF NOT EXISTS progress (
     completed INTEGER DEFAULT 0,
     score DOUBLE PRECISION,
     completed_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+CREATE TABLE IF NOT EXISTS exam_attempts (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT,
+    source_level TEXT,
+    target_level TEXT,
+    score INTEGER,
+    total INTEGER,
+    percentage DOUBLE PRECISION,
+    passed INTEGER DEFAULT 0,
+    section_scores TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
@@ -397,6 +425,56 @@ class Database:
             (user_id, code),
         )
         return True
+
+    async def record_exam_attempt(
+        self,
+        user_id: int,
+        source_level: str,
+        target_level: str,
+        score: int,
+        total: int,
+        percentage: float,
+        passed: bool,
+        section_scores: dict[str, dict[str, int]],
+    ) -> None:
+        await self.execute(
+            """
+            INSERT INTO exam_attempts (
+                user_id, source_level, target_level, score, total,
+                percentage, passed, section_scores
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                source_level,
+                target_level,
+                score,
+                total,
+                percentage,
+                int(passed),
+                json.dumps(section_scores, ensure_ascii=False),
+            ),
+        )
+
+    async def get_latest_exam_attempt(
+        self,
+        user_id: int,
+        target_level: str,
+    ) -> dict[str, Any] | None:
+        row = await self.fetchone(
+            """
+            SELECT * FROM exam_attempts
+            WHERE user_id = ? AND target_level = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (user_id, target_level),
+        )
+        if not row:
+            return None
+        result = dict(row)
+        result["section_scores"] = json.loads(result.get("section_scores") or "{}")
+        return result
 
     async def get_cache(self, cache_key: str) -> dict[str, Any] | None:
         row = await self.fetchone("SELECT payload FROM exercise_cache WHERE cache_key = ?", (cache_key,))

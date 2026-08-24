@@ -7,10 +7,12 @@ from datetime import date
 from pathlib import Path
 
 from bot.config import Settings
+from bot.handlers.exam import exam_passed
 from bot.models.database import Database, _asyncpg_url, _postgres_query
 from bot.models.progress import ProgressRepository
 from bot.models.vocabulary import VocabularyRepository
 from bot.services.deepseek import DeepSeekService
+from bot.utils.exam_content import EXAMS, SECTION_LABELS
 from bot.webhook import _webhook_secret
 
 
@@ -57,6 +59,25 @@ async def test_database() -> None:
             assert stats["words_learning"] == 0
             assert stats["words_mastered"] == 1
 
+            section_scores = {
+                section: {"correct": 4, "total": 5}
+                for section in SECTION_LABELS
+            }
+            await db.record_exam_attempt(
+                12345,
+                "A1",
+                "A2",
+                12,
+                15,
+                80.0,
+                True,
+                section_scores,
+            )
+            attempt = await db.get_latest_exam_attempt(12345, "A2")
+            assert attempt is not None
+            assert attempt["passed"] == 1
+            assert attempt["section_scores"]["reading"]["correct"] == 4
+
             assert await db.touch_activity(12345) == 1
         finally:
             await db.close()
@@ -97,6 +118,30 @@ def test_wordlists() -> None:
     print(f"wordlists: OK ({len(words)} words)")
 
 
+def test_exam_content() -> None:
+    for target_level, exam in EXAMS.items():
+        questions = exam["questions"]
+        assert len(questions) == 15, target_level
+        for section in SECTION_LABELS:
+            assert sum(q["section"] == section for q in questions) == 5
+        for question in questions:
+            assert 0 <= question["correct_index"] < len(question["options"])
+
+    balanced_pass = {
+        section: {"correct": 4, "total": 5}
+        for section in SECTION_LABELS
+    }
+    weak_section = {
+        "vocabulary": {"correct": 5, "total": 5},
+        "grammar": {"correct": 5, "total": 5},
+        "reading": {"correct": 2, "total": 5},
+    }
+    assert exam_passed(12, 15, balanced_pass)
+    assert not exam_passed(12, 15, weak_section)
+    assert not exam_passed(11, 15, balanced_pass)
+    print("exam content: OK")
+
+
 def test_webhook_secret() -> None:
     original = os.environ.get("WEBHOOK_SECRET")
     try:
@@ -130,6 +175,7 @@ def test_postgres_compatibility_helpers() -> None:
 if __name__ == "__main__":
     test_imports()
     test_wordlists()
+    test_exam_content()
     test_webhook_secret()
     test_postgres_compatibility_helpers()
     test_deepseek_fallback()
