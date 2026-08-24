@@ -1,0 +1,20 @@
+name: Keep Render Awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Render health endpoint
+        run: >
+          curl --fail --silent --show-error
+          --retry 3 --retry-delay 5 --max-time 60
+          https://english-tutor-bot-bkk4.onrender.com/health

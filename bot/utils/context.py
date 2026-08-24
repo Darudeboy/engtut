@@ -39,7 +39,7 @@ class AppContext:
 
     @classmethod
     def build(cls, settings: Settings) -> "AppContext":
-        db = Database(settings.database_path)
+        db = Database(settings.database_path, settings.database_url)
         return cls(
             settings=settings,
             db=db,

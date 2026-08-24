@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -41,13 +41,15 @@ class ReminderService:
                 logger.warning("Failed to send reminder to %s: %s", row["user_id"], exc)
 
     async def send_inactivity_reminders(self) -> None:
+        inactive_since = date.today() - timedelta(days=2)
         rows = await self.db.fetchall(
             """
             SELECT user_id FROM users
             WHERE onboarding_completed = 1
               AND last_active IS NOT NULL
-              AND julianday('now') - julianday(last_active) >= 2
-            """
+              AND last_active <= ?
+            """,
+            (inactive_since,),
         )
         for row in rows:
             try:

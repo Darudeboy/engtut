@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from bot.models.database import Database
@@ -34,7 +34,7 @@ class VocabularyRepository:
                 theme,
                 example_en,
                 example_ru,
-                date.today().isoformat(),
+                date.today(),
             ),
         )
 
@@ -46,12 +46,15 @@ class VocabularyRepository:
         return int(row["cnt"]) if row else 0
 
     async def get_words_learned_today(self, user_id: int) -> int:
+        today = date.today()
+        day_start = datetime.combine(today, time.min)
+        next_day_start = day_start + timedelta(days=1)
         row = await self.db.fetchone(
             """
             SELECT COUNT(*) AS cnt FROM user_words
-            WHERE user_id = ? AND date(learned_at) = date('now')
+            WHERE user_id = ? AND learned_at >= ? AND learned_at < ?
             """,
-            (user_id,),
+            (user_id, day_start, next_day_start),
         )
         return int(row["cnt"]) if row else 0
 
@@ -70,7 +73,7 @@ class VocabularyRepository:
             ORDER BY next_review ASC
             LIMIT ?
             """,
-            (user_id, date.today().isoformat(), limit),
+            (user_id, date.today(), limit),
         )
         return [dict(row) for row in rows]
 
@@ -98,7 +101,7 @@ class VocabularyRepository:
                 result.repetitions,
                 result.ease_factor,
                 result.interval_days,
-                next_review.isoformat(),
+                next_review,
                 word_id,
             ),
         )

@@ -72,15 +72,29 @@ python -m bot.main
 
 - `BOT_TOKEN`
 - `DEEPSEEK_API_KEY`
-- `WEBHOOK_SECRET` (необязательно; если пусто, создаётся стабильное значение)
+- `DATABASE_URL` — строка подключения Neon PostgreSQL
 
 Render автоматически передаёт публичный адрес в `RENDER_EXTERNAL_URL`, поэтому
 `WEBHOOK_BASE_URL` задавать не требуется. Локальный polling-запуск
 `python -m bot.main` при этом продолжает работать.
 
-Важно: файловая система бесплатного Web Service временная. SQLite-прогресс может
-быть потерян после перезапуска или нового деплоя; для постоянного хранения нужен
-PostgreSQL или persistent disk.
+### Постоянная история через Neon
+
+1. Создайте бесплатный проект на <https://console.neon.tech/>.
+2. Скопируйте connection string вида `postgresql://...`.
+3. Добавьте его в Render Environment как `DATABASE_URL`.
+4. Передеплойте сервис. В логах должна появиться строка
+   `PostgreSQL database initialized`.
+
+Когда `DATABASE_URL` задан, бот хранит пользователей, уроки, слова, streak и
+достижения в Neon. Без него локальный запуск автоматически использует SQLite.
+
+### Пробуждение бесплатного Render
+
+Workflow `.github/workflows/keep-render-awake.yml` запрашивает `/health` каждые
+10 минут. Он запускается автоматически после push в GitHub и доступен во вкладке
+Actions. Планировщик GitHub может иногда запускаться с задержкой; Render всё равно
+не гарантирует отсутствие cold start на бесплатном тарифе.
 
 ## Деплой на VPS (systemd)
 
@@ -120,7 +134,7 @@ english-tutor-bot/
 │   ├── config.py
 │   ├── handlers/       # Модули обучения
 │   ├── services/       # DeepSeek, Dictionary, TTS, SM-2
-│   ├── models/         # SQLite репозитории
+│   ├── models/         # SQLite/PostgreSQL репозитории
 │   ├── prompts/        # Промпты для LLM
 │   └── utils/          # Клавиатуры, состояния
 ├── data/
@@ -138,6 +152,7 @@ english-tutor-bot/
 | `DEEPSEEK_API_KEY` | Нет* | Ключ DeepSeek API |
 | `DEEPSEEK_BASE_URL` | Нет | По умолчанию `https://api.deepseek.com/v1` |
 | `DATABASE_PATH` | Нет | Путь к SQLite (по умолчанию `data/english_tutor.db`) |
+| `DATABASE_URL` | Для Render | Строка подключения Neon/PostgreSQL |
 | `WEBHOOK_BASE_URL` | Нет | Публичный URL вне Render |
 | `WEBHOOK_PATH` | Нет | Путь webhook, по умолчанию `/webhook` |
 | `WEBHOOK_SECRET` | Нет | Секрет проверки запросов Telegram |

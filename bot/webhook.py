@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import os
+import re
 import sys
 
 from aiohttp import web
@@ -40,9 +41,12 @@ def _webhook_path() -> str:
 
 def _webhook_secret(bot_token: str) -> str:
     configured = os.getenv("WEBHOOK_SECRET", "").strip()
-    if configured:
+    if configured and re.fullmatch(r"[A-Za-z0-9_-]{1,256}", configured):
         return configured
-    return hashlib.sha256(bot_token.encode("utf-8")).hexdigest()
+    source = configured or bot_token
+    if configured:
+        logger.warning("WEBHOOK_SECRET contained unsupported characters; using a safe hash")
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
 def _public_url() -> str:
