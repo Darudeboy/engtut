@@ -1,0 +1,30 @@
+{
+  "theme": "shopping",
+  "words": [
+    {"word": "shop", "translation": "магазин"},
+    {"word": "buy", "translation": "покупать"},
+    {"word": "sell", "translation": "продавать"},
+    {"word": "price", "translation": "цена"},
+    {"word": "money", "translation": "деньги"},
+    {"word": "cash", "translation": "наличные"},
+    {"word": "card", "translation": "карта"},
+    {"word": "cost", "translation": "стоить"},
+    {"word": "cheap", "translation": "дешёвый"},
+    {"word": "expensive", "translation": "дорогой"},
+    {"word": "size", "translation": "размер"},
+    {"word": "color", "translation": "цвет"},
+    {"word": "discount", "translation": "скидка"},
+    {"word": "receipt", "translation": "чек"},
+    {"word": "change", "translation": "сдача"},
+    {"word": "cashier", "translation": "кассир"},
+    {"word": "basket", "translation": "корзина"},
+    {"word": "product", "translation": "товар"},
+    {"word": "try", "translation": "примерять"},
+    {"word": "choose", "translation": "выбирать"},
+    {"word": "pay", "translation": "платить"},
+    {"word": "open", "translation": "открыто"},
+    {"word": "closed", "translation": "закрыто"},
+    {"word": "available", "translation": "в наличии"},
+    {"word": "order", "translation": "заказ"}
+  ]
+}

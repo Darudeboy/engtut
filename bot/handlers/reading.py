@@ -1,20 +1,46 @@
+import secrets
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
 from bot.utils.context import get_app_context
-from bot.utils.keyboards import options_keyboard, skip_keyboard
+from bot.utils.keyboards import options_keyboard
 from bot.utils.states import ReadingStates
 
 router = Router()
 
+GOAL_READING_TOPICS = {
+    "travel": "a simple trip",
+    "work": "a simple work day",
+    "hobby": "free time and hobbies",
+    "exam": "daily routine",
+}
+
+
 @router.message(F.text == "📖 Чтение")
-async def start_reading(message: Message, state: FSMContext) -> None:
+async def start_reading(
+    message: Message,
+    state: FSMContext,
+    part_of_daily: bool = False,
+    user_id_override: int | None = None,
+) -> None:
     ctx = get_app_context()
-    user_id = message.from_user.id
+    user_id = user_id_override or message.from_user.id
     profile = await ctx.users.get_profile(user_id)
-    lesson = await ctx.deepseek.generate_reading_lesson("greetings", profile.level)
-    ctx.user_sessions[user_id] = {"reading": lesson, "q_index": 0, "score": 0}
+    session = ctx.user_sessions.setdefault(user_id, {})
+    if not part_of_daily and session.get("daily"):
+        session["daily"]["active"] = False
+    topic = GOAL_READING_TOPICS.get(profile.goal, "greetings and daily life")
+    lesson = await ctx.deepseek.generate_reading_lesson(topic, profile.level)
+    session.update(
+        {
+            "reading": lesson,
+            "reading_id": secrets.token_hex(4),
+            "q_index": 0,
+            "score": 0,
+        }
+    )
     await state.set_state(ReadingStates.answering)
     keywords = "\n".join(
         f"• {item['word']} — {item['translation']}" for item in lesson.get("keywords", [])
@@ -43,20 +69,39 @@ async def reading_answer(callback: CallbackQuery, state: FSMContext) -> None:
     lesson = session.get("reading", {})
     questions = lesson.get("questions", [])
     q_index = int(session.get("q_index", 0))
-    selected = int(callback.data.split(":")[-1])
+    parts = callback.data.split(":")
+    expected_token = f"{session.get('reading_id')}-{q_index}"
+    if (
+        len(parts) != 4
+        or parts[-2] != expected_token
+        or q_index >= len(questions)
+    ):
+        await callback.answer("Этот вопрос уже не активен", show_alert=True)
+        return
+    selected = int(parts[-1])
     question = questions[q_index]
-    correct = selected == question.get("correct_index", 0)
+    if not 0 <= selected < len(question.get("options", [])):
+        await callback.answer("Некорректный вариант", show_alert=True)
+        return
+    correct_index = int(question.get("correct_index", 0))
+    if not 0 <= correct_index < len(question.get("options", [])):
+        await callback.answer("Вопрос составлен некорректно", show_alert=True)
+        return
+    correct = selected == correct_index
     if correct:
         session["score"] = int(session.get("score", 0)) + 1
         feedback = "✅ Верно!"
     else:
-        correct_option = question["options"][question.get("correct_index", 0)]
+        correct_option = question["options"][correct_index]
         feedback = f"Почти! Правильно: {correct_option}\n{question.get('explanation_ru', '')}"
 
     q_index += 1
     session["q_index"] = q_index
     ctx.user_sessions[user_id] = session
-    await callback.message.edit_text(f"{callback.message.text}\n\n{feedback}")
+    await callback.message.edit_text(
+        f"{callback.message.text}\n\n{feedback}",
+        parse_mode=None,
+    )
     await callback.answer()
 
     if q_index >= len(questions):
@@ -69,8 +114,11 @@ async def reading_answer(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         await callback.message.answer(
             f"📖 Урок завершён! Результат: {score}/{total} ({pct}%)\n"
-            "Отличная работа! Можешь выбрать следующее занятие в меню."
+            "Отличная работа!"
         )
+        if await _continue_daily(callback.message, state, user_id, pct):
+            return
+        await callback.message.answer("Можешь выбрать следующее занятие в меню.")
         return
     await _send_question(callback.message, user_id)
 
@@ -84,7 +132,28 @@ async def _send_question(message: Message, user_id: int) -> None:
     if q_index >= len(questions):
         return
     question = questions[q_index]
+    token = f"{session.get('reading_id')}-{q_index}"
     await message.answer(
         f"❓ {question['question']}",
-        reply_markup=options_keyboard(question["options"], "reading:answer"),
+        reply_markup=options_keyboard(
+            question["options"],
+            "reading:answer",
+            token,
+        ),
     )
+
+
+async def _continue_daily(
+    message: Message,
+    state: FSMContext,
+    user_id: int,
+    score: float,
+) -> bool:
+    ctx = get_app_context()
+    daily = ctx.user_sessions.get(user_id, {}).get("daily", {})
+    if not daily.get("active"):
+        return False
+    from bot.handlers.daily import continue_daily
+
+    await continue_daily(message, state, user_id, "reading", score)
+    return True

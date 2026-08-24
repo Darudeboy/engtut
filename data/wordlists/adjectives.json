@@ -1,0 +1,30 @@
+{
+  "theme": "adjectives",
+  "words": [
+    {"word": "good", "translation": "хороший"},
+    {"word": "bad", "translation": "плохой"},
+    {"word": "big", "translation": "большой"},
+    {"word": "small", "translation": "маленький"},
+    {"word": "new", "translation": "новый"},
+    {"word": "old", "translation": "старый"},
+    {"word": "young", "translation": "молодой"},
+    {"word": "happy", "translation": "счастливый"},
+    {"word": "sad", "translation": "грустный"},
+    {"word": "easy", "translation": "лёгкий"},
+    {"word": "difficult", "translation": "трудный"},
+    {"word": "fast", "translation": "быстрый"},
+    {"word": "slow", "translation": "медленный"},
+    {"word": "hot", "translation": "горячий"},
+    {"word": "cold", "translation": "холодный"},
+    {"word": "clean", "translation": "чистый"},
+    {"word": "dirty", "translation": "грязный"},
+    {"word": "beautiful", "translation": "красивый"},
+    {"word": "important", "translation": "важный"},
+    {"word": "interesting", "translation": "интересный"},
+    {"word": "busy", "translation": "занятый"},
+    {"word": "free", "translation": "свободный"},
+    {"word": "ready", "translation": "готовый"},
+    {"word": "different", "translation": "другой"},
+    {"word": "same", "translation": "одинаковый"}
+  ]
+}

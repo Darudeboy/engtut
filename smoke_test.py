@@ -1,7 +1,9 @@
 """Smoke tests for English Tutor Bot."""
 import asyncio
+import json
 import os
 import tempfile
+from datetime import date
 from pathlib import Path
 
 from bot.config import Settings
@@ -32,8 +34,28 @@ async def test_database() -> None:
             await vocabulary.add_word(
                 12345, "hello", "привет", "greetings"
             )
+            await vocabulary.add_word(
+                12345, "hello", "привет", "greetings"
+            )
             assert await vocabulary.get_words_learned_today(12345) == 1
+            assert len(await vocabulary.get_due_reviews(12345)) == 0
+            stats = await db.get_stats(12345)
+            assert stats["words_introduced"] == 1
+            assert stats["words_learning"] == 1
+            assert stats["words_mastered"] == 0
+            assert stats["accuracy"] == 100.0
+
+            await db.execute(
+                "UPDATE user_words SET next_review = ? WHERE user_id = ?",
+                (date.today(), 12345),
+            )
             assert len(await vocabulary.get_due_reviews(12345)) == 1
+            word_id = (await vocabulary.get_due_reviews(12345))[0]["id"]
+            for _ in range(3):
+                await vocabulary.review_word(12345, word_id, quality=5)
+            stats = await db.get_stats(12345)
+            assert stats["words_learning"] == 0
+            assert stats["words_mastered"] == 1
 
             assert await db.touch_activity(12345) == 1
         finally:
@@ -62,6 +84,17 @@ def test_imports() -> None:
     from bot.main import main  # noqa: F401
 
     print("imports: OK")
+
+
+def test_wordlists() -> None:
+    words: list[str] = []
+    for path in Path("data/wordlists").glob("*.json"):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["theme"]
+        words.extend(item["word"].lower() for item in payload["words"])
+    assert len(words) >= 190
+    assert len(words) == len(set(words))
+    print(f"wordlists: OK ({len(words)} words)")
 
 
 def test_webhook_secret() -> None:
@@ -96,6 +129,7 @@ def test_postgres_compatibility_helpers() -> None:
 
 if __name__ == "__main__":
     test_imports()
+    test_wordlists()
     test_webhook_secret()
     test_postgres_compatibility_helpers()
     test_deepseek_fallback()

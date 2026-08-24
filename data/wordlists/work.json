@@ -1,0 +1,30 @@
+{
+  "theme": "work",
+  "words": [
+    {"word": "job", "translation": "работа"},
+    {"word": "office", "translation": "офис"},
+    {"word": "colleague", "translation": "коллега"},
+    {"word": "manager", "translation": "руководитель"},
+    {"word": "meeting", "translation": "встреча"},
+    {"word": "project", "translation": "проект"},
+    {"word": "task", "translation": "задача"},
+    {"word": "deadline", "translation": "крайний срок"},
+    {"word": "email", "translation": "электронное письмо"},
+    {"word": "document", "translation": "документ"},
+    {"word": "computer", "translation": "компьютер"},
+    {"word": "schedule", "translation": "расписание"},
+    {"word": "salary", "translation": "зарплата"},
+    {"word": "customer", "translation": "клиент"},
+    {"word": "company", "translation": "компания"},
+    {"word": "team", "translation": "команда"},
+    {"word": "break", "translation": "перерыв"},
+    {"word": "report", "translation": "отчёт"},
+    {"word": "experience", "translation": "опыт"},
+    {"word": "skill", "translation": "навык"},
+    {"word": "interview", "translation": "собеседование"},
+    {"word": "career", "translation": "карьера"},
+    {"word": "workplace", "translation": "рабочее место"},
+    {"word": "responsibility", "translation": "обязанность"},
+    {"word": "result", "translation": "результат"}
+  ]
+}

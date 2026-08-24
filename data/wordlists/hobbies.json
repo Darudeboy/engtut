@@ -1,0 +1,30 @@
+{
+  "theme": "hobbies",
+  "words": [
+    {"word": "hobby", "translation": "увлечение"},
+    {"word": "music", "translation": "музыка"},
+    {"word": "song", "translation": "песня"},
+    {"word": "movie", "translation": "фильм"},
+    {"word": "book", "translation": "книга"},
+    {"word": "game", "translation": "игра"},
+    {"word": "sport", "translation": "спорт"},
+    {"word": "running", "translation": "бег"},
+    {"word": "swimming", "translation": "плавание"},
+    {"word": "drawing", "translation": "рисование"},
+    {"word": "painting", "translation": "живопись"},
+    {"word": "cooking", "translation": "готовка"},
+    {"word": "dancing", "translation": "танцы"},
+    {"word": "singing", "translation": "пение"},
+    {"word": "reading", "translation": "чтение"},
+    {"word": "traveling", "translation": "путешествия"},
+    {"word": "photography", "translation": "фотография"},
+    {"word": "gardening", "translation": "садоводство"},
+    {"word": "fishing", "translation": "рыбалка"},
+    {"word": "walking", "translation": "прогулка"},
+    {"word": "collection", "translation": "коллекция"},
+    {"word": "weekend", "translation": "выходные"},
+    {"word": "relax", "translation": "отдыхать"},
+    {"word": "practice", "translation": "практиковаться"},
+    {"word": "favorite", "translation": "любимый"}
+  ]
+}

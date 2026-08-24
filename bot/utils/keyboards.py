@@ -15,9 +15,19 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def options_keyboard(options: list[str], prefix: str) -> InlineKeyboardMarkup:
+def options_keyboard(
+    options: list[str],
+    prefix: str,
+    token: str | None = None,
+) -> InlineKeyboardMarkup:
+    callback_prefix = f"{prefix}:{token}" if token else prefix
     buttons = [
-        [InlineKeyboardButton(text=option, callback_data=f"{prefix}:{idx}")]
+        [
+            InlineKeyboardButton(
+                text=option,
+                callback_data=f"{callback_prefix}:{idx}",
+            )
+        ]
         for idx, option in enumerate(options)
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -87,7 +97,7 @@ def goal_keyboard() -> InlineKeyboardMarkup:
 
 
 def review_quality_keyboard(word_id: int) -> InlineKeyboardMarkup:
-    labels = ["😕 Сложно", "😐 Норм", "😊 Легко"]
+    labels = ["Не вспомнил", "С трудом", "Легко"]
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -99,3 +109,77 @@ def review_quality_keyboard(word_id: int) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def review_reveal_keyboard(word_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Показать перевод",
+                    callback_data=f"vocab:reveal:{word_id}",
+                )
+            ]
+        ]
+    )
+
+
+def vocabulary_menu_keyboard(
+    due_count: int,
+    learned_today: int,
+    max_new_words: int,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if due_count:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"Повторить слова ({due_count})",
+                    callback_data="vocab:start_review",
+                )
+            ]
+        )
+    if learned_today < max_new_words:
+        label = "Учить 5 новых" if learned_today == 0 else "Ещё 5 новых"
+        rows.extend(
+            [
+                [
+                    InlineKeyboardButton(
+                        text=label,
+                        callback_data="vocab:new:auto",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="Выбрать тему",
+                        callback_data="vocab:themes",
+                    )
+                ],
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Статистика слов", callback_data="vocab:stats"
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def vocabulary_theme_keyboard(
+    themes: list[tuple[str, str]],
+) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=label,
+                callback_data=f"vocab:new:{theme}",
+            )
+        ]
+        for theme, label in themes
+    ]
+    rows.append(
+        [InlineKeyboardButton(text="Назад", callback_data="vocab:menu")]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)

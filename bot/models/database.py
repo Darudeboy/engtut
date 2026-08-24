@@ -42,6 +42,12 @@ CREATE TABLE IF NOT EXISTS user_words (
     learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
+DELETE FROM user_words
+WHERE id NOT IN (
+    SELECT MIN(id) FROM user_words GROUP BY user_id, word
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_words_user_word
+ON user_words(user_id, word);
 
 CREATE TABLE IF NOT EXISTS progress (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,6 +119,12 @@ CREATE TABLE IF NOT EXISTS user_words (
     learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
+DELETE FROM user_words
+WHERE id NOT IN (
+    SELECT MIN(id) FROM user_words GROUP BY user_id, word
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_words_user_word
+ON user_words(user_id, word);
 
 CREATE TABLE IF NOT EXISTS progress (
     id BIGSERIAL PRIMARY KEY,
@@ -322,14 +334,36 @@ class Database:
     async def get_stats(self, user_id: int) -> dict[str, Any]:
         user = await self.get_or_create_user(user_id)
         words_row = await self.fetchone(
-            "SELECT COUNT(*) AS cnt FROM user_words WHERE user_id = ?", (user_id,)
+            """
+            SELECT
+                COUNT(*) AS introduced,
+                COALESCE(SUM(CASE WHEN repetitions < 3 THEN 1 ELSE 0 END), 0) AS learning,
+                COALESCE(SUM(CASE WHEN repetitions >= 3 THEN 1 ELSE 0 END), 0) AS mastered
+            FROM user_words
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+        due_row = await self.fetchone(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM user_words
+            WHERE user_id = ? AND (next_review IS NULL OR next_review <= ?)
+            """,
+            (user_id, date.today()),
         )
         lessons_row = await self.fetchone(
             "SELECT COUNT(*) AS cnt FROM progress WHERE user_id = ? AND completed = 1",
             (user_id,),
         )
         accuracy_row = await self.fetchone(
-            "SELECT AVG(score) AS avg_score FROM progress WHERE user_id = ? AND score IS NOT NULL",
+            """
+            SELECT AVG(score) AS avg_score
+            FROM progress
+            WHERE user_id = ?
+              AND score IS NOT NULL
+              AND module IN ('reading', 'grammar', 'writing', 'listening')
+            """,
             (user_id,),
         )
         achievements = await self.fetchall(
@@ -340,7 +374,12 @@ class Database:
             "level": user.get("level", "Pre-A1"),
             "goal": user.get("goal"),
             "streak_days": user.get("streak_days", 0),
-            "words_learned": words_row["cnt"] if words_row else 0,
+            "words_introduced": int(words_row["introduced"] or 0) if words_row else 0,
+            "words_learning": int(words_row["learning"] or 0) if words_row else 0,
+            "words_mastered": int(words_row["mastered"] or 0) if words_row else 0,
+            "words_due": int(due_row["cnt"] or 0) if due_row else 0,
+            # Backwards-compatible name used by summaries; now means actual mastery.
+            "words_learned": int(words_row["mastered"] or 0) if words_row else 0,
             "lessons_completed": lessons_row["cnt"] if lessons_row else 0,
             "accuracy": round(accuracy_row["avg_score"] or 0, 1) if accuracy_row else 0,
             "achievements": [dict(a) for a in achievements],

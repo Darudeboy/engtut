@@ -1,0 +1,30 @@
+{
+  "theme": "verbs",
+  "words": [
+    {"word": "be", "translation": "быть"},
+    {"word": "have", "translation": "иметь"},
+    {"word": "do", "translation": "делать"},
+    {"word": "go", "translation": "идти, ехать"},
+    {"word": "come", "translation": "приходить"},
+    {"word": "make", "translation": "создавать"},
+    {"word": "take", "translation": "брать"},
+    {"word": "give", "translation": "давать"},
+    {"word": "get", "translation": "получать"},
+    {"word": "know", "translation": "знать"},
+    {"word": "think", "translation": "думать"},
+    {"word": "want", "translation": "хотеть"},
+    {"word": "need", "translation": "нуждаться"},
+    {"word": "like", "translation": "нравиться"},
+    {"word": "see", "translation": "видеть"},
+    {"word": "look", "translation": "смотреть"},
+    {"word": "say", "translation": "говорить"},
+    {"word": "tell", "translation": "рассказывать"},
+    {"word": "ask", "translation": "спрашивать"},
+    {"word": "answer", "translation": "отвечать"},
+    {"word": "find", "translation": "находить"},
+    {"word": "use", "translation": "использовать"},
+    {"word": "work", "translation": "работать"},
+    {"word": "learn", "translation": "учить"},
+    {"word": "remember", "translation": "помнить"}
+  ]
+}

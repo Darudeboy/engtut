@@ -25,6 +25,7 @@ class VocabularyRepository:
                 user_id, word, translation, transcription, theme,
                 example_en, example_ru, next_review
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, word) DO NOTHING
             """,
             (
                 user_id,
@@ -34,7 +35,7 @@ class VocabularyRepository:
                 theme,
                 example_en,
                 example_ru,
-                date.today(),
+                date.today() + timedelta(days=1),
             ),
         )
 
@@ -55,6 +56,16 @@ class VocabularyRepository:
             WHERE user_id = ? AND learned_at >= ? AND learned_at < ?
             """,
             (user_id, day_start, next_day_start),
+        )
+        return int(row["cnt"]) if row else 0
+
+    async def get_due_count(self, user_id: int) -> int:
+        row = await self.db.fetchone(
+            """
+            SELECT COUNT(*) AS cnt FROM user_words
+            WHERE user_id = ? AND (next_review IS NULL OR next_review <= ?)
+            """,
+            (user_id, date.today()),
         )
         return int(row["cnt"]) if row else 0
 

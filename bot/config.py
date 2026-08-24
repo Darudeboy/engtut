@@ -28,6 +28,7 @@ class Settings:
     database_url: str | None = None
     bot_proxy: str | None = None
     new_words_per_day: int = 5
+    max_new_words_per_day: int = 15
     review_words_per_session: int = 5
     daily_goal_minutes: int = 15
 
@@ -47,4 +48,7 @@ def get_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         database_url=os.getenv("DATABASE_URL") or None,
         bot_proxy=os.getenv("BOT_PROXY") or os.getenv("HTTPS_PROXY") or None,
+        new_words_per_day=int(os.getenv("NEW_WORDS_PER_BATCH", "5")),
+        max_new_words_per_day=int(os.getenv("MAX_NEW_WORDS_PER_DAY", "15")),
+        review_words_per_session=int(os.getenv("REVIEW_WORDS_PER_SESSION", "5")),
     )

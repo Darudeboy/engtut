@@ -1,0 +1,30 @@
+{
+  "theme": "city",
+  "words": [
+    {"word": "city", "translation": "город"},
+    {"word": "street", "translation": "улица"},
+    {"word": "road", "translation": "дорога"},
+    {"word": "square", "translation": "площадь"},
+    {"word": "building", "translation": "здание"},
+    {"word": "bank", "translation": "банк"},
+    {"word": "hospital", "translation": "больница"},
+    {"word": "school", "translation": "школа"},
+    {"word": "station", "translation": "станция"},
+    {"word": "stop", "translation": "остановка"},
+    {"word": "park", "translation": "парк"},
+    {"word": "museum", "translation": "музей"},
+    {"word": "theater", "translation": "театр"},
+    {"word": "restaurant", "translation": "ресторан"},
+    {"word": "cafe", "translation": "кафе"},
+    {"word": "store", "translation": "магазин"},
+    {"word": "market", "translation": "рынок"},
+    {"word": "bridge", "translation": "мост"},
+    {"word": "corner", "translation": "угол"},
+    {"word": "center", "translation": "центр"},
+    {"word": "traffic", "translation": "дорожное движение"},
+    {"word": "crossing", "translation": "переход"},
+    {"word": "entrance", "translation": "вход"},
+    {"word": "exit", "translation": "выход"},
+    {"word": "address", "translation": "адрес"}
+  ]
+}

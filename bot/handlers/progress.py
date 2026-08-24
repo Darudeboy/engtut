@@ -22,9 +22,12 @@ async def show_stats(message: Message) -> None:
         "📊 Твой прогресс\n\n"
         f"Уровень: {stats['level']}\n"
         f"🔥 Streak: {stats['streak_days']} дн.\n"
-        f"🔤 Слов изучено: {stats['words_learned']}\n"
+        f"👀 Слов встречено: {stats['words_introduced']}\n"
+        f"🧠 В изучении: {stats['words_learning']}\n"
+        f"✅ Освоено: {stats['words_mastered']}\n"
+        f"🔁 Повторить сегодня: {stats['words_due']}\n"
         f"📚 Уроков пройдено: {stats['lessons_completed']}\n"
-        f"🎯 Точность: {stats['accuracy']}%\n\n"
+        f"🎯 Точность в упражнениях: {stats['accuracy']}%\n\n"
         "🏆 Достижения:\n" + "\n".join(f"• {item}" for item in achievement_lines)
     )
     await message.answer(text)
