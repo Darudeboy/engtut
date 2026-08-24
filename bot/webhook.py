@@ -4,7 +4,7 @@ import os
 import sys
 
 from aiohttp import web
-from aiogram import Bot, Dispatcher
+from aiogram import Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
@@ -93,17 +93,17 @@ def create_app() -> web.Application:
     webhook_secret = _webhook_secret(settings.bot_token)
     webhook_url = f"{public_url}{webhook_path}"
 
-    async def on_startup(startup_bot: Bot) -> None:
+    async def on_startup() -> None:
         await app_context.db.connect()
         await reminders.start()
-        await startup_bot.set_webhook(
+        await bot.set_webhook(
             webhook_url,
             secret_token=webhook_secret,
             allowed_updates=dispatcher.resolve_used_update_types(),
         )
         logger.info("Telegram webhook configured: %s", webhook_url)
 
-    async def on_shutdown(_: Bot) -> None:
+    async def on_shutdown() -> None:
         await reminders.stop()
         await app_context.db.close()
 
