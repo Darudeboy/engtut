@@ -67,6 +67,9 @@ async def start_dialogue(message: Message, state: FSMContext) -> None:
     ctx = get_app_context()
     user_id = message.from_user.id
     profile = await ctx.users.get_profile(user_id)
+    if not profile.onboarding_completed:
+        await message.answer("Сначала выбери язык и пройди настройку: /start")
+        return
     session = ctx.user_sessions.setdefault(user_id, {})
     if session.get("daily"):
         session["daily"]["active"] = False
@@ -108,6 +111,7 @@ async def choose_scenario(callback: CallbackQuery, state: FSMContext) -> None:
         history,
         profile.level,
         criteria,
+        profile.learning_language,
     )
     history.append({"role": "assistant", "content": reply})
     session = ctx.user_sessions.setdefault(user_id, {})
@@ -118,6 +122,7 @@ async def choose_scenario(callback: CallbackQuery, state: FSMContext) -> None:
             "dialogue_role": role,
             "dialogue_criteria": criteria,
             "dialogue_level": profile.level,
+            "dialogue_language": profile.learning_language,
             "dialogue_history": history,
             "dialogue_turns": 0,
         }
@@ -150,6 +155,7 @@ async def dialogue_hint(callback: CallbackQuery) -> None:
         session.get("dialogue_scenario", ""),
         last_bot,
         session.get("dialogue_level", "Pre-A1"),
+        session.get("dialogue_language", "english"),
     )
     await callback.message.answer(f"💡 Подсказка:\n{hint}", parse_mode=None)
     await callback.answer()
@@ -174,6 +180,7 @@ async def dialogue_message(message: Message, state: FSMContext) -> None:
         history,
         session.get("dialogue_level", "Pre-A1"),
         session.get("dialogue_criteria", []),
+        session.get("dialogue_language", "english"),
     )
     history.append({"role": "assistant", "content": reply})
     session["dialogue_history"] = history
@@ -206,6 +213,7 @@ async def _complete_dialogue(event, state: FSMContext) -> None:
         history,
         session.get("dialogue_level", "Pre-A1"),
         session.get("dialogue_criteria", []),
+        session.get("dialogue_language", "english"),
     )
     score = int(assessment.get("score", 0))
     strengths = assessment.get("strengths", [])
@@ -227,10 +235,25 @@ async def _complete_dialogue(event, state: FSMContext) -> None:
         )
     feedback = "\n\n".join(part for part in feedback_parts if part)
     await ctx.db.execute(
-        "INSERT INTO dialogues (user_id, scenario, messages, feedback) VALUES (?, ?, ?, ?)",
-        (user_id, scenario, json.dumps(history, ensure_ascii=False), feedback),
+        """
+        INSERT INTO dialogues (user_id, language, scenario, messages, feedback)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            user_id,
+            session.get("dialogue_language", "english"),
+            scenario,
+            json.dumps(history, ensure_ascii=False),
+            feedback,
+        ),
     )
-    await ctx.progress.record_lesson(user_id, "dialogue", scenario, score=score)
+    await ctx.progress.record_lesson(
+        user_id,
+        "dialogue",
+        scenario,
+        score=score,
+        language=session.get("dialogue_language", "english"),
+    )
     await ctx.db.touch_activity(user_id)
     await ctx.db.unlock_achievement(user_id, "first_dialogue")
     await state.clear()

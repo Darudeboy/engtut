@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT,
     level TEXT DEFAULT 'Pre-A1',
     goal TEXT,
+    selected_language TEXT NOT NULL DEFAULT 'english',
     daily_goal_minutes INTEGER DEFAULT 15,
     reminder_time TEXT,
     streak_days INTEGER DEFAULT 0,
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS user_words (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
+    language TEXT NOT NULL DEFAULT 'english',
     word TEXT,
     translation TEXT,
     transcription TEXT,
@@ -42,16 +44,10 @@ CREATE TABLE IF NOT EXISTS user_words (
     learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
-DELETE FROM user_words
-WHERE id NOT IN (
-    SELECT MIN(id) FROM user_words GROUP BY user_id, word
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_words_user_word
-ON user_words(user_id, word);
-
 CREATE TABLE IF NOT EXISTS progress (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
+    language TEXT NOT NULL DEFAULT 'english',
     module TEXT,
     lesson_id TEXT,
     completed INTEGER DEFAULT 0,
@@ -63,6 +59,7 @@ CREATE TABLE IF NOT EXISTS progress (
 CREATE TABLE IF NOT EXISTS exam_attempts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
+    language TEXT NOT NULL DEFAULT 'english',
     source_level TEXT,
     target_level TEXT,
     score INTEGER,
@@ -77,6 +74,7 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
 CREATE TABLE IF NOT EXISTS tutor_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
+    language TEXT NOT NULL DEFAULT 'english',
     role TEXT,
     content TEXT,
     intent TEXT,
@@ -107,6 +105,7 @@ CREATE TABLE IF NOT EXISTS release_views (
 CREATE TABLE IF NOT EXISTS dialogues (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
+    language TEXT NOT NULL DEFAULT 'english',
     scenario TEXT,
     messages TEXT,
     feedback TEXT,
@@ -137,6 +136,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT,
     level TEXT DEFAULT 'Pre-A1',
     goal TEXT,
+    selected_language TEXT NOT NULL DEFAULT 'english',
     daily_goal_minutes INTEGER DEFAULT 15,
     reminder_time TEXT,
     streak_days INTEGER DEFAULT 0,
@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS user_words (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT,
+    language TEXT NOT NULL DEFAULT 'english',
     word TEXT,
     translation TEXT,
     transcription TEXT,
@@ -163,16 +164,10 @@ CREATE TABLE IF NOT EXISTS user_words (
     learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
-DELETE FROM user_words
-WHERE id NOT IN (
-    SELECT MIN(id) FROM user_words GROUP BY user_id, word
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_words_user_word
-ON user_words(user_id, word);
-
 CREATE TABLE IF NOT EXISTS progress (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT,
+    language TEXT NOT NULL DEFAULT 'english',
     module TEXT,
     lesson_id TEXT,
     completed INTEGER DEFAULT 0,
@@ -184,6 +179,7 @@ CREATE TABLE IF NOT EXISTS progress (
 CREATE TABLE IF NOT EXISTS exam_attempts (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT,
+    language TEXT NOT NULL DEFAULT 'english',
     source_level TEXT,
     target_level TEXT,
     score INTEGER,
@@ -198,6 +194,7 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
 CREATE TABLE IF NOT EXISTS tutor_messages (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT,
+    language TEXT NOT NULL DEFAULT 'english',
     role TEXT,
     content TEXT,
     intent TEXT,
@@ -228,6 +225,7 @@ CREATE TABLE IF NOT EXISTS release_views (
 CREATE TABLE IF NOT EXISTS dialogues (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT,
+    language TEXT NOT NULL DEFAULT 'english',
     scenario TEXT,
     messages TEXT,
     feedback TEXT,
@@ -301,6 +299,7 @@ class Database:
             )
             async with self._postgres.acquire() as connection:
                 await connection.execute(POSTGRES_SCHEMA)
+            await self._run_language_migrations()
             logger.info("PostgreSQL database initialized")
             return
 
@@ -309,7 +308,64 @@ class Database:
         self._sqlite.row_factory = aiosqlite.Row
         await self._sqlite.executescript(SQLITE_SCHEMA)
         await self._sqlite.commit()
+        await self._run_language_migrations()
         logger.info("Database initialized at %s", self.db_path)
+
+    async def _run_language_migrations(self) -> None:
+        language_columns = {
+            "users": ("selected_language", "TEXT NOT NULL DEFAULT 'english'"),
+            "user_words": ("language", "TEXT NOT NULL DEFAULT 'english'"),
+            "progress": ("language", "TEXT NOT NULL DEFAULT 'english'"),
+            "exam_attempts": ("language", "TEXT NOT NULL DEFAULT 'english'"),
+            "tutor_messages": ("language", "TEXT NOT NULL DEFAULT 'english'"),
+            "dialogues": ("language", "TEXT NOT NULL DEFAULT 'english'"),
+        }
+        if self.is_postgres:
+            for table, (column, definition) in language_columns.items():
+                await self.execute(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "
+                    f"{column} {definition}"
+                )
+        else:
+            for table, (column, definition) in language_columns.items():
+                columns = await self.fetchall(f"PRAGMA table_info({table})")
+                if column not in {str(row["name"]) for row in columns}:
+                    await self.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+                    )
+
+        await self.execute(
+            """
+            CREATE TABLE IF NOT EXISTS learning_profiles (
+                user_id BIGINT NOT NULL,
+                language TEXT NOT NULL,
+                level TEXT DEFAULT 'Pre-A1',
+                writing_level INTEGER DEFAULT 1,
+                grammar_topic_index INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, language),
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+            """
+        )
+        await self.execute(
+            """
+            INSERT INTO learning_profiles (
+                user_id, language, level, writing_level, grammar_topic_index
+            )
+            SELECT user_id, 'english', level, writing_level, grammar_topic_index
+            FROM users
+            WHERE 1 = 1
+            ON CONFLICT(user_id, language) DO NOTHING
+            """
+        )
+        await self.execute("DROP INDEX IF EXISTS idx_user_words_user_word")
+        await self.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_user_words_user_language_word
+            ON user_words(user_id, language, word)
+            """
+        )
 
     async def close(self) -> None:
         if self._postgres:
@@ -359,24 +415,117 @@ class Database:
 
     async def get_or_create_user(self, user_id: int, username: str | None = None) -> dict[str, Any]:
         row = await self.fetchone("SELECT * FROM users WHERE user_id = ?", (user_id,))
-        if row:
-            return dict(row)
-        await self.execute(
-            """
-            INSERT INTO users (user_id, username, last_active) VALUES (?, ?, ?)
-            ON CONFLICT(user_id) DO NOTHING
-            """,
-            (user_id, username, date.today()),
-        )
-        row = await self.fetchone("SELECT * FROM users WHERE user_id = ?", (user_id,))
-        return dict(row) if row else {}
+        if not row:
+            await self.execute(
+                """
+                INSERT INTO users (user_id, username, last_active)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO NOTHING
+                """,
+                (user_id, username, date.today()),
+            )
+            row = await self.fetchone(
+                "SELECT * FROM users WHERE user_id = ?",
+                (user_id,),
+            )
+        if not row:
+            return {}
+        user = dict(row)
+        language = str(user.get("selected_language") or "english")
+        profile = await self.get_learning_profile(user_id, language)
+        user.update(profile)
+        user["learning_language"] = language
+        return user
 
     async def update_user(self, user_id: int, **fields: Any) -> None:
         if not fields:
             return
-        columns = ", ".join(f"{key} = ?" for key in fields)
-        values = tuple(fields.values()) + (user_id,)
-        await self.execute(f"UPDATE users SET {columns} WHERE user_id = ?", values)
+        learning_fields = {
+            key: fields.pop(key)
+            for key in ("level", "writing_level", "grammar_topic_index")
+            if key in fields
+        }
+        if fields:
+            columns = ", ".join(f"{key} = ?" for key in fields)
+            values = tuple(fields.values()) + (user_id,)
+            await self.execute(
+                f"UPDATE users SET {columns} WHERE user_id = ?",
+                values,
+            )
+        if learning_fields:
+            await self.update_learning_profile(user_id, **learning_fields)
+        if "selected_language" in fields:
+            await self.get_learning_profile(
+                user_id,
+                str(fields["selected_language"]),
+            )
+
+    async def get_learning_language(self, user_id: int) -> str:
+        row = await self.fetchone(
+            "SELECT selected_language FROM users WHERE user_id = ?",
+            (user_id,),
+        )
+        return str(row["selected_language"] or "english") if row else "english"
+
+    async def get_learning_profile(
+        self,
+        user_id: int,
+        language: str | None = None,
+    ) -> dict[str, Any]:
+        language = language or await self.get_learning_language(user_id)
+        await self.execute(
+            """
+            INSERT INTO learning_profiles (user_id, language)
+            VALUES (?, ?)
+            ON CONFLICT(user_id, language) DO NOTHING
+            """,
+            (user_id, language),
+        )
+        row = await self.fetchone(
+            """
+            SELECT level, writing_level, grammar_topic_index
+            FROM learning_profiles
+            WHERE user_id = ? AND language = ?
+            """,
+            (user_id, language),
+        )
+        return dict(row) if row else {
+            "level": "Pre-A1",
+            "writing_level": 1,
+            "grammar_topic_index": 0,
+        }
+
+    async def update_learning_profile(
+        self,
+        user_id: int,
+        language: str | None = None,
+        **fields: Any,
+    ) -> None:
+        allowed = {"level", "writing_level", "grammar_topic_index"}
+        values_to_update = {
+            key: value for key, value in fields.items() if key in allowed
+        }
+        if not values_to_update:
+            return
+        language = language or await self.get_learning_language(user_id)
+        await self.get_learning_profile(user_id, language)
+        columns = ", ".join(f"{key} = ?" for key in values_to_update)
+        values = tuple(values_to_update.values()) + (user_id, language)
+        await self.execute(
+            f"UPDATE learning_profiles SET {columns} "
+            "WHERE user_id = ? AND language = ?",
+            values,
+        )
+
+    async def set_learning_language(self, user_id: int, language: str) -> None:
+        if language not in {"english", "italian"}:
+            raise ValueError(f"Unsupported learning language: {language}")
+        await self.get_or_create_user(user_id)
+        await self.execute(
+            "UPDATE users SET selected_language = ? WHERE user_id = ?",
+            (language, user_id),
+        )
+        await self.get_learning_profile(user_id, language)
 
     async def touch_activity(self, user_id: int) -> int:
         user = await self.get_or_create_user(user_id)
@@ -410,14 +559,19 @@ class Database:
         lesson_id: str,
         score: float | None = None,
         completed: bool = True,
+        language: str | None = None,
     ) -> None:
+        language = language or await self.get_learning_language(user_id)
         await self.execute(
             """
-            INSERT INTO progress (user_id, module, lesson_id, completed, score, completed_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO progress (
+                user_id, language, module, lesson_id, completed, score, completed_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
+                language,
                 module,
                 lesson_id,
                 int(completed),
@@ -428,6 +582,7 @@ class Database:
 
     async def get_stats(self, user_id: int) -> dict[str, Any]:
         user = await self.get_or_create_user(user_id)
+        language = str(user.get("learning_language") or "english")
         words_row = await self.fetchone(
             """
             SELECT
@@ -435,31 +590,36 @@ class Database:
                 COALESCE(SUM(CASE WHEN repetitions < 3 THEN 1 ELSE 0 END), 0) AS learning,
                 COALESCE(SUM(CASE WHEN repetitions >= 3 THEN 1 ELSE 0 END), 0) AS mastered
             FROM user_words
-            WHERE user_id = ?
+            WHERE user_id = ? AND language = ?
             """,
-            (user_id,),
+            (user_id, language),
         )
         due_row = await self.fetchone(
             """
             SELECT COUNT(*) AS cnt
             FROM user_words
-            WHERE user_id = ? AND (next_review IS NULL OR next_review <= ?)
+            WHERE user_id = ? AND language = ?
+              AND (next_review IS NULL OR next_review <= ?)
             """,
-            (user_id, date.today()),
+            (user_id, language, date.today()),
         )
         lessons_row = await self.fetchone(
-            "SELECT COUNT(*) AS cnt FROM progress WHERE user_id = ? AND completed = 1",
-            (user_id,),
+            """
+            SELECT COUNT(*) AS cnt FROM progress
+            WHERE user_id = ? AND language = ? AND completed = 1
+            """,
+            (user_id, language),
         )
         accuracy_row = await self.fetchone(
             """
             SELECT AVG(score) AS avg_score
             FROM progress
             WHERE user_id = ?
+              AND language = ?
               AND score IS NOT NULL
               AND module IN ('reading', 'grammar', 'writing', 'listening', 'dialogue')
             """,
-            (user_id,),
+            (user_id, language),
         )
         achievements = await self.fetchall(
             "SELECT achievement_code, unlocked_at FROM achievements WHERE user_id = ? ORDER BY unlocked_at",
@@ -467,6 +627,7 @@ class Database:
         )
         return {
             "level": user.get("level", "Pre-A1"),
+            "learning_language": language,
             "goal": user.get("goal"),
             "streak_days": user.get("streak_days", 0),
             "words_introduced": int(words_row["introduced"] or 0) if words_row else 0,
@@ -503,16 +664,19 @@ class Database:
         percentage: float,
         passed: bool,
         section_scores: dict[str, dict[str, int]],
+        language: str | None = None,
     ) -> None:
+        language = language or await self.get_learning_language(user_id)
         await self.execute(
             """
             INSERT INTO exam_attempts (
-                user_id, source_level, target_level, score, total,
+                user_id, language, source_level, target_level, score, total,
                 percentage, passed, section_scores
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
+                language,
                 source_level,
                 target_level,
                 score,
@@ -528,14 +692,15 @@ class Database:
         user_id: int,
         target_level: str,
     ) -> dict[str, Any] | None:
+        language = await self.get_learning_language(user_id)
         row = await self.fetchone(
             """
             SELECT * FROM exam_attempts
-            WHERE user_id = ? AND target_level = ?
+            WHERE user_id = ? AND language = ? AND target_level = ?
             ORDER BY created_at DESC, id DESC
             LIMIT 1
             """,
-            (user_id, target_level),
+            (user_id, language, target_level),
         )
         if not row:
             return None
@@ -544,12 +709,13 @@ class Database:
         return result
 
     async def get_lesson_attempt_count(self, user_id: int, module: str) -> int:
+        language = await self.get_learning_language(user_id)
         row = await self.fetchone(
             """
             SELECT COUNT(*) AS cnt FROM progress
-            WHERE user_id = ? AND module = ? AND completed = 1
+            WHERE user_id = ? AND language = ? AND module = ? AND completed = 1
             """,
-            (user_id, module),
+            (user_id, language, module),
         )
         return int(row["cnt"]) if row else 0
 
@@ -560,12 +726,13 @@ class Database:
         content: str,
         intent: str | None = None,
     ) -> None:
+        language = await self.get_learning_language(user_id)
         await self.execute(
             """
-            INSERT INTO tutor_messages (user_id, role, content, intent)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO tutor_messages (user_id, language, role, content, intent)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (user_id, role, content, intent),
+            (user_id, language, role, content, intent),
         )
 
     async def get_recent_tutor_messages(
@@ -573,27 +740,29 @@ class Database:
         user_id: int,
         limit: int = 12,
     ) -> list[dict[str, Any]]:
+        language = await self.get_learning_language(user_id)
         rows = await self.fetchall(
             """
             SELECT role, content, intent, created_at
             FROM tutor_messages
-            WHERE user_id = ?
+            WHERE user_id = ? AND language = ?
               AND (intent IS NULL OR intent <> 'next')
             ORDER BY created_at DESC, id DESC
             LIMIT ?
             """,
-            (user_id, limit),
+            (user_id, language, limit),
         )
         return [dict(row) for row in reversed(rows)]
 
     async def clear_ai_history(self, user_id: int) -> None:
+        language = await self.get_learning_language(user_id)
         await self.execute(
-            "DELETE FROM tutor_messages WHERE user_id = ?",
-            (user_id,),
+            "DELETE FROM tutor_messages WHERE user_id = ? AND language = ?",
+            (user_id, language),
         )
         await self.execute(
-            "DELETE FROM dialogues WHERE user_id = ?",
-            (user_id,),
+            "DELETE FROM dialogues WHERE user_id = ? AND language = ?",
+            (user_id, language),
         )
 
     async def get_weak_topics(
@@ -601,11 +770,12 @@ class Database:
         user_id: int,
         limit: int = 5,
     ) -> list[dict[str, Any]]:
+        language = await self.get_learning_language(user_id)
         rows = await self.fetchall(
             """
             SELECT p.module, p.lesson_id, p.score AS avg_score, 1 AS attempts
             FROM progress AS p
-            WHERE p.user_id = ?
+            WHERE p.user_id = ? AND p.language = ?
               AND p.completed = 1
               AND p.score < 75
               AND p.module IN ('reading', 'grammar', 'writing', 'listening', 'dialogue')
@@ -613,6 +783,7 @@ class Database:
                   SELECT p2.id
                   FROM progress AS p2
                   WHERE p2.user_id = p.user_id
+                    AND p2.language = p.language
                     AND p2.module = p.module
                     AND p2.lesson_id = p.lesson_id
                     AND p2.completed = 1
@@ -622,7 +793,7 @@ class Database:
             ORDER BY p.score ASC, p.completed_at DESC
             LIMIT ?
             """,
-            (user_id, limit),
+            (user_id, language, limit),
         )
         return [dict(row) for row in rows]
 
@@ -632,13 +803,15 @@ class Database:
         module: str,
         since: datetime,
     ) -> bool:
+        language = await self.get_learning_language(user_id)
         row = await self.fetchone(
             """
             SELECT id FROM progress
-            WHERE user_id = ? AND module = ? AND completed_at >= ?
+            WHERE user_id = ? AND language = ?
+              AND module = ? AND completed_at >= ?
             LIMIT 1
             """,
-            (user_id, module, since),
+            (user_id, language, module, since),
         )
         return row is not None
 

@@ -3,6 +3,7 @@ from datetime import UTC, datetime, time
 from typing import Any
 
 from bot.models.database import Database
+from bot.utils.languages import language_info
 
 MODULE_LABELS = {
     "reading": "чтение",
@@ -80,19 +81,22 @@ async def build_learner_context(
     user_id: int,
 ) -> dict[str, Any]:
     stats = await db.get_stats(user_id)
+    language = str(stats.get("learning_language") or "english")
     weak_topics = await db.get_weak_topics(user_id, limit=5)
     recent_progress = await db.fetchall(
         """
         SELECT module, lesson_id, score, completed_at
         FROM progress
-        WHERE user_id = ? AND completed = 1
+        WHERE user_id = ? AND language = ? AND completed = 1
         ORDER BY completed_at DESC, id DESC
         LIMIT 6
         """,
-        (user_id,),
+        (user_id, language),
     )
     return {
         "level": stats["level"],
+        "learning_language": language,
+        "learning_language_name": language_info(language)["name_ru"],
         "goal": stats["goal"],
         "streak_days": stats["streak_days"],
         "words_learning": stats["words_learning"],
@@ -158,8 +162,9 @@ async def personalized_reminder_text(db: Database, user_id: int) -> str:
     user = await db.get_or_create_user(user_id)
     recommendation = await recommend_next_step(db, user_id)
     level = user.get("level", "Pre-A1")
+    language = language_info(user.get("learning_language"))["name_ru"]
     return (
-        f"⏰ Пора заниматься! Твой уровень: {level}.\n\n"
+        f"⏰ Пора заниматься! Язык: {language}, уровень: {level}.\n\n"
         f"{recommendation['text']}"
     )
 

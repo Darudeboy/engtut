@@ -5,7 +5,7 @@ MAIN_MENU_BUTTONS = [
     ["📚 Грамматика", "✍️ Письмо"],
     ["💬 Диалог", "🎧 Аудирование"],
     ["🎓 Экзамен", "📊 Мой прогресс"],
-    ["⚙️ Настройки"],
+    ["🌐 Язык", "⚙️ Настройки"],
 ]
 
 
@@ -110,6 +110,27 @@ def settings_keyboard() -> InlineKeyboardMarkup:
                     callback_data="settings:reminder",
                 )
             ]
+        ]
+    )
+
+
+def language_keyboard(
+    current_language: str,
+    callback_prefix: str = "language:select",
+) -> InlineKeyboardMarkup:
+    languages = [
+        ("🇬🇧 Английский", "english"),
+        ("🇮🇹 Итальянский", "italian"),
+    ]
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{'✅ ' if code == current_language else ''}{label}",
+                    callback_data=f"{callback_prefix}:{code}",
+                )
+            ]
+            for label, code in languages
         ]
     )
 

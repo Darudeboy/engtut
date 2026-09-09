@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, FSInputFile, Message
 from bot.utils.content import LISTENING_RESOURCES
 from bot.utils.context import get_app_context
 from bot.utils.keyboards import options_keyboard
+from bot.utils.languages import language_info
 from bot.utils.states import ListeningStates
 
 router = Router()
@@ -24,20 +25,30 @@ async def start_listening(message: Message, state: FSMContext) -> None:
     ctx = get_app_context()
     user_id = message.from_user.id
     profile = await ctx.users.get_profile(user_id)
+    if not profile.onboarding_completed:
+        await message.answer("Сначала выбери язык и пройди настройку: /start")
+        return
     attempts = await ctx.db.get_lesson_attempt_count(user_id, "listening")
     variant = attempts % 6
     topic = GOAL_LISTENING_TOPICS.get(profile.goal, "daily life")
-    cache_key = f"listening:{profile.level}:{topic}:{variant}"
+    cache_key = (
+        f"listening:{profile.learning_language}:"
+        f"{profile.level}:{topic}:{variant}"
+    )
     lesson = await ctx.db.get_cache(cache_key)
     if not lesson:
         lesson = await ctx.deepseek.generate_listening_lesson(
             topic,
             profile.level,
             variant,
+            profile.learning_language,
         )
         await ctx.db.set_cache(cache_key, lesson)
 
-    audio_path = await ctx.tts.synthesize(lesson["transcript"])
+    audio_path = await ctx.tts.synthesize(
+        lesson["transcript"],
+        lang=str(language_info(profile.learning_language)["tts"]),
+    )
     if not audio_path:
         await state.clear()
         await message.answer(
@@ -57,6 +68,7 @@ async def start_listening(message: Message, state: FSMContext) -> None:
             "listening_q": 0,
             "listening_score": 0,
             "listening_variant": variant,
+            "listening_language": profile.learning_language,
         }
     )
     await state.set_state(ListeningStates.answering)
@@ -127,10 +139,17 @@ async def listening_answer(callback: CallbackQuery, state: FSMContext) -> None:
             "listening",
             f"{lesson.get('title', 'listening')}:{session.get('listening_variant', 0)}",
             score=pct,
+            language=session.get("listening_language", "english"),
         )
         await ctx.db.touch_activity(user_id)
         await state.clear()
-        resource = LISTENING_RESOURCES[0]
+        if session.get("listening_language") == "italian":
+            resource = {
+                "title": "Easy Italian — живой итальянский",
+                "url": "https://www.youtube.com/@EasyItalian",
+            }
+        else:
+            resource = LISTENING_RESOURCES[0]
         await callback.message.answer(
             f"🎧 Аудирование завершено: {score}/{total} ({pct}%)\n\n"
             f"Текст записи:\n{lesson.get('transcript', '')}\n\n"

@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import sqlite3
 import tempfile
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -9,7 +10,12 @@ from pathlib import Path
 from bot.config import Settings
 from bot.handlers.exam import exam_passed
 from bot.handlers.writing import _normalize
-from bot.models.database import Database, _asyncpg_url, _postgres_query
+from bot.models.database import (
+    SQLITE_SCHEMA,
+    Database,
+    _asyncpg_url,
+    _postgres_query,
+)
 from bot.models.progress import ProgressRepository
 from bot.models.vocabulary import VocabularyRepository
 from bot.services.coach import (
@@ -22,6 +28,7 @@ from bot.services.deepseek import DeepSeekService
 from bot.utils.content import WRITING_STAGES
 from bot.utils.exam_content import EXAMS, SECTION_LABELS
 from bot.utils.keyboards import reminder_keyboard
+from bot.utils.languages import language_label
 from bot.utils.releases import BOT_COMMANDS, CURRENT_RELEASE_ID, CURRENT_RELEASE_TEXT
 from bot.webhook import _webhook_secret
 
@@ -161,10 +168,80 @@ async def test_database() -> None:
             assert attempt["passed"] == 1
             assert attempt["section_scores"]["reading"]["correct"] == 4
 
+            await db.set_learning_language(12345, "italian")
+            italian_user = await db.get_or_create_user(12345)
+            assert italian_user["learning_language"] == "italian"
+            assert italian_user["level"] == "Pre-A1"
+            italian_stats = await db.get_stats(12345)
+            assert italian_stats["lessons_completed"] == 0
+            assert italian_stats["words_introduced"] == 0
+            await db.update_user(12345, level="A1")
+            await vocabulary.add_word(12345, "ciao", "привет", "basics")
+            await vocabulary.add_word(12345, "hello", "привет", "basics")
+            await progress.record_lesson(
+                12345,
+                "reading",
+                "italian_test",
+                score=100.0,
+            )
+            assert (await db.get_stats(12345))["words_introduced"] == 2
+
+            await db.set_learning_language(12345, "english")
+            english_user = await db.get_or_create_user(12345)
+            assert english_user["level"] == "Pre-A1"
+            assert (await db.get_stats(12345))["lessons_completed"] == 3
             assert await db.touch_activity(12345) == 1
         finally:
             await db.close()
     print("database: OK")
+
+
+async def test_legacy_language_migration() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "legacy.db"
+        legacy_schema = SQLITE_SCHEMA.replace(
+            "    selected_language TEXT NOT NULL DEFAULT 'english',\n",
+            "",
+        ).replace(
+            "    language TEXT NOT NULL DEFAULT 'english',\n",
+            "",
+        )
+        connection = sqlite3.connect(path)
+        connection.executescript(legacy_schema)
+        connection.execute(
+            """
+            INSERT INTO users (
+                user_id, level, writing_level, grammar_topic_index,
+                onboarding_completed
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (777, "A2", 5, 3, 1),
+        )
+        connection.execute(
+            """
+            INSERT INTO user_words (user_id, word, translation, theme)
+            VALUES (?, ?, ?, ?)
+            """,
+            (777, "legacy", "старый", "test"),
+        )
+        connection.commit()
+        connection.close()
+
+        db = Database(path)
+        await db.connect()
+        try:
+            user = await db.get_or_create_user(777)
+            assert user["learning_language"] == "english"
+            assert user["level"] == "A2"
+            assert user["writing_level"] == 5
+            word = await db.fetchone(
+                "SELECT language FROM user_words WHERE user_id = ?",
+                (777,),
+            )
+            assert word["language"] == "english"
+        finally:
+            await db.close()
+    print("legacy language migration: OK")
 
 
 def test_deepseek_fallback() -> None:
@@ -221,6 +298,33 @@ def test_deepseek_fallback() -> None:
         )
     )
     assert coach
+    italian_reading = asyncio.run(
+        service.generate_reading_lesson(
+            "daily life",
+            "A1",
+            0,
+            language="italian",
+        )
+    )
+    assert "Luca" in italian_reading["text"]
+    italian_listening = asyncio.run(
+        service.generate_listening_lesson(
+            "daily life",
+            "A1",
+            0,
+            language="italian",
+        )
+    )
+    assert "Giulia" in italian_listening["transcript"]
+    italian_grammar = asyncio.run(
+        service.generate_grammar_exercise(
+            "essere",
+            "Pre-A1",
+            0,
+            language="italian",
+        )
+    )
+    assert len(italian_grammar["questions"]) == 5
     print("deepseek fallback: OK")
 
 
@@ -239,7 +343,16 @@ def test_wordlists() -> None:
         words.extend(item["word"].lower() for item in payload["words"])
     assert len(words) >= 190
     assert len(words) == len(set(words))
-    print(f"wordlists: OK ({len(words)} words)")
+    italian_words: list[str] = []
+    for path in Path("data/wordlists/italian").glob("*.json"):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        italian_words.extend(item["word"].lower() for item in payload["words"])
+    assert len(italian_words) >= 50
+    assert len(italian_words) == len(set(italian_words))
+    print(
+        f"wordlists: OK ({len(words)} English, "
+        f"{len(italian_words)} Italian words)"
+    )
 
 
 def test_exam_content() -> None:
@@ -308,7 +421,7 @@ def test_release_notes() -> None:
     ]
     assert len(commands) == len(set(commands))
     assert CURRENT_RELEASE_ID
-    assert "AI-наставник" in CURRENT_RELEASE_TEXT
+    assert "Итальянский" in CURRENT_RELEASE_TEXT
     print("release notes: OK")
 
 
@@ -323,6 +436,29 @@ def test_reminder_keyboard() -> None:
     assert "settings:reminder:20:00" in callbacks
     assert callbacks[-1] == "settings:reminder:none"
     print("reminder keyboard: OK")
+
+
+def test_languages() -> None:
+    from bot.utils.italian_content import (
+        ITALIAN_EXAMS,
+        ITALIAN_GRAMMAR_TOPICS_BY_LEVEL,
+        ITALIAN_WRITING_STAGES,
+    )
+
+    assert language_label("english") == "🇬🇧 Английский"
+    assert language_label("italian") == "🇮🇹 Итальянский"
+    assert set(ITALIAN_GRAMMAR_TOPICS_BY_LEVEL) == {"Pre-A1", "A1", "A2"}
+    assert sorted(ITALIAN_WRITING_STAGES) == list(range(1, 9))
+    for tasks in ITALIAN_WRITING_STAGES.values():
+        assert len(tasks) >= 3
+    for exam in ITALIAN_EXAMS.values():
+        assert len(exam["questions"]) == 15
+        for section in SECTION_LABELS:
+            assert sum(
+                question["section"] == section
+                for question in exam["questions"]
+            ) == 5
+    print("languages: OK")
 
 
 def test_webhook_secret() -> None:
@@ -363,8 +499,10 @@ if __name__ == "__main__":
     test_coach_intents()
     test_release_notes()
     test_reminder_keyboard()
+    test_languages()
     test_webhook_secret()
     test_postgres_compatibility_helpers()
     test_deepseek_fallback()
     asyncio.run(test_database())
+    asyncio.run(test_legacy_language_migration())
     print("All smoke tests passed")

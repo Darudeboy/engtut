@@ -18,17 +18,20 @@ class VocabularyRepository:
         transcription: str = "",
         example_en: str = "",
         example_ru: str = "",
+        language: str | None = None,
     ) -> None:
+        language = language or await self.db.get_learning_language(user_id)
         await self.db.execute(
             """
             INSERT INTO user_words (
-                user_id, word, translation, transcription, theme,
+                user_id, language, word, translation, transcription, theme,
                 example_en, example_ru, next_review
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, word) DO NOTHING
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, language, word) DO NOTHING
             """,
             (
                 user_id,
+                language,
                 word.lower(),
                 translation,
                 transcription,
@@ -39,40 +42,61 @@ class VocabularyRepository:
             ),
         )
 
-    async def get_words_count(self, user_id: int) -> int:
+    async def get_words_count(
+        self,
+        user_id: int,
+        language: str | None = None,
+    ) -> int:
+        language = language or await self.db.get_learning_language(user_id)
         row = await self.db.fetchone(
-            "SELECT COUNT(*) AS cnt FROM user_words WHERE user_id = ?",
-            (user_id,),
+            """
+            SELECT COUNT(*) AS cnt FROM user_words
+            WHERE user_id = ? AND language = ?
+            """,
+            (user_id, language),
         )
         return int(row["cnt"]) if row else 0
 
     async def get_words_learned_today(self, user_id: int) -> int:
+        language = await self.db.get_learning_language(user_id)
         today = date.today()
         day_start = datetime.combine(today, time.min)
         next_day_start = day_start + timedelta(days=1)
         row = await self.db.fetchone(
             """
             SELECT COUNT(*) AS cnt FROM user_words
-            WHERE user_id = ? AND learned_at >= ? AND learned_at < ?
+            WHERE user_id = ? AND language = ?
+              AND learned_at >= ? AND learned_at < ?
             """,
-            (user_id, day_start, next_day_start),
+            (user_id, language, day_start, next_day_start),
         )
         return int(row["cnt"]) if row else 0
 
     async def get_due_count(self, user_id: int) -> int:
+        language = await self.db.get_learning_language(user_id)
         row = await self.db.fetchone(
             """
             SELECT COUNT(*) AS cnt FROM user_words
-            WHERE user_id = ? AND (next_review IS NULL OR next_review <= ?)
+            WHERE user_id = ? AND language = ?
+              AND (next_review IS NULL OR next_review <= ?)
             """,
-            (user_id, date.today()),
+            (user_id, language, date.today()),
         )
         return int(row["cnt"]) if row else 0
 
-    async def user_has_word(self, user_id: int, word: str) -> bool:
+    async def user_has_word(
+        self,
+        user_id: int,
+        word: str,
+        language: str | None = None,
+    ) -> bool:
+        language = language or await self.db.get_learning_language(user_id)
         row = await self.db.fetchone(
-            "SELECT id FROM user_words WHERE user_id = ? AND word = ?",
-            (user_id, word.lower()),
+            """
+            SELECT id FROM user_words
+            WHERE user_id = ? AND language = ? AND word = ?
+            """,
+            (user_id, language, word.lower()),
         )
         return row is not None
 
@@ -81,14 +105,15 @@ class VocabularyRepository:
         user_id: int,
         limit: int = 5,
     ) -> list[dict[str, str]]:
+        language = await self.db.get_learning_language(user_id)
         rows = await self.db.fetchall(
             """
             SELECT word, translation FROM user_words
-            WHERE user_id = ?
+            WHERE user_id = ? AND language = ?
             ORDER BY learned_at DESC, id DESC
             LIMIT ?
             """,
-            (user_id, limit),
+            (user_id, language, limit),
         )
         return [
             {
@@ -99,21 +124,33 @@ class VocabularyRepository:
         ]
 
     async def get_due_reviews(self, user_id: int, limit: int = 5) -> list[dict[str, Any]]:
+        language = await self.db.get_learning_language(user_id)
         rows = await self.db.fetchall(
             """
             SELECT * FROM user_words
-            WHERE user_id = ? AND (next_review IS NULL OR next_review <= ?)
+            WHERE user_id = ? AND language = ?
+              AND (next_review IS NULL OR next_review <= ?)
             ORDER BY next_review ASC
             LIMIT ?
             """,
-            (user_id, date.today(), limit),
+            (user_id, language, date.today(), limit),
         )
         return [dict(row) for row in rows]
 
-    async def review_word(self, user_id: int, word_id: int, quality: int) -> None:
+    async def review_word(
+        self,
+        user_id: int,
+        word_id: int,
+        quality: int,
+        language: str | None = None,
+    ) -> None:
+        language = language or await self.db.get_learning_language(user_id)
         row = await self.db.fetchone(
-            "SELECT * FROM user_words WHERE id = ? AND user_id = ?",
-            (word_id, user_id),
+            """
+            SELECT * FROM user_words
+            WHERE id = ? AND user_id = ? AND language = ?
+            """,
+            (word_id, user_id, language),
         )
         if not row:
             return

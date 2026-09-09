@@ -7,6 +7,7 @@ from aiogram.types import Message
 
 from bot.utils.content import WRITING_STAGES
 from bot.utils.context import get_app_context
+from bot.utils.italian_content import ITALIAN_WRITING_STAGES
 from bot.utils.states import WritingStates
 
 router = Router()
@@ -18,8 +19,17 @@ async def start_writing(message: Message, state: FSMContext) -> None:
     ctx = get_app_context()
     user_id = message.from_user.id
     profile = await ctx.users.get_profile(user_id)
-    stage = max(1, min(profile.writing_level, MAX_WRITING_STAGE))
-    tasks = WRITING_STAGES[stage]
+    if not profile.onboarding_completed:
+        await message.answer("Сначала выбери язык и пройди настройку: /start")
+        return
+    stages = (
+        ITALIAN_WRITING_STAGES
+        if profile.learning_language == "italian"
+        else WRITING_STAGES
+    )
+    max_stage = max(stages)
+    stage = max(1, min(profile.writing_level, max_stage))
+    tasks = stages[stage]
     attempt_count = await ctx.db.get_lesson_attempt_count(user_id, "writing")
     task = tasks[attempt_count % len(tasks)]
     session = ctx.user_sessions.setdefault(user_id, {})
@@ -32,6 +42,8 @@ async def start_writing(message: Message, state: FSMContext) -> None:
             "writing_level": stage,
             "writing_task": task,
             "learner_level": profile.level,
+            "learner_language": profile.learning_language,
+            "writing_max_stage": max_stage,
         }
     )
     await state.set_state(WritingStates.answering)
@@ -39,7 +51,7 @@ async def start_writing(message: Message, state: FSMContext) -> None:
     if task.get("min_words"):
         format_hint = f"\nМинимум слов: {task['min_words']}."
     await message.answer(
-        f"✍️ Этап письма {stage}/{MAX_WRITING_STAGE}: {task['title']}\n\n"
+        f"✍️ Этап письма {stage}/{max_stage}: {task['title']}\n\n"
         f"{task['prompt']}{format_hint}\n\n"
         "Можно ошибиться — я помогу мягко исправить."
     )
@@ -60,7 +72,9 @@ async def writing_answer(message: Message, state: FSMContext) -> None:
 
     if task.get("free"):
         min_words = int(task.get("min_words", 1))
-        word_count = len(re.findall(r"[A-Za-z]+(?:['’][A-Za-z]+)?", answer))
+        word_count = len(
+            re.findall(r"[^\W\d_]+(?:['’][^\W\d_]+)?", answer, re.UNICODE)
+        )
         if word_count < min_words:
             result = {
                 "status": "incorrect",
@@ -78,6 +92,7 @@ async def writing_answer(message: Message, state: FSMContext) -> None:
                 user_answer=answer,
                 level=session.get("learner_level", "Pre-A1"),
                 min_words=min_words,
+                language=session.get("learner_language", "english"),
             )
     else:
         target = task["answer"]
@@ -85,6 +100,7 @@ async def writing_answer(message: Message, state: FSMContext) -> None:
             target,
             answer,
             session.get("learner_level", "Pre-A1"),
+            session.get("learner_language", "english"),
         )
         if _normalize(answer) == _normalize(target):
             result = {
@@ -98,15 +114,20 @@ async def writing_answer(message: Message, state: FSMContext) -> None:
     if status == "correct":
         score = 100
         msg = f"✅ {feedback or 'Отлично!'}"
-        if stage < MAX_WRITING_STAGE:
+        max_stage = int(session.get("writing_max_stage", MAX_WRITING_STAGE))
+        if stage < max_stage:
             new_level = stage + 1
-            await ctx.db.update_user(user_id, writing_level=new_level)
+            await ctx.db.update_learning_profile(
+                user_id,
+                language=session.get("learner_language", "english"),
+                writing_level=new_level,
+            )
             msg += f"\n🎉 Открыт этап письма {new_level}!"
         else:
             msg += "\n🏅 Максимальный этап закреплён. Следующая тема будет другой."
         if stage >= 3:
             await ctx.db.unlock_achievement(user_id, "writing_level_3")
-        if stage >= MAX_WRITING_STAGE:
+        if stage >= max_stage:
             await ctx.db.unlock_achievement(user_id, "writing_level_8")
     elif status == "close":
         score = 70
@@ -124,6 +145,7 @@ async def writing_answer(message: Message, state: FSMContext) -> None:
         "writing",
         task["id"],
         score=score,
+        language=session.get("learner_language", "english"),
     )
     await ctx.db.touch_activity(user_id)
     await state.clear()
@@ -142,4 +164,4 @@ async def writing_answer(message: Message, state: FSMContext) -> None:
 
 
 def _normalize(text: str) -> str:
-    return re.sub(r"[^a-z0-9']+", " ", text.lower()).strip()
+    return re.sub(r"[^\w']+", " ", text.casefold(), flags=re.UNICODE).strip()

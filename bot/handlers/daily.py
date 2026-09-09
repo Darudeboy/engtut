@@ -34,6 +34,7 @@ async def daily_session(message: Message, state: FSMContext) -> None:
         "completed": [],
         "scores": {},
         "theme": GOAL_THEMES.get(profile.goal),
+        "language": profile.learning_language,
     }
     await state.set_state(DailyStates.in_session)
     await message.answer(
@@ -128,6 +129,7 @@ async def continue_daily(
             "daily",
             "guided_session",
             score=_average_score(daily.get("scores", {})),
+            language=daily.get("language", "english"),
         )
         streak = await ctx.db.touch_activity(user_id)
         if streak >= 7:

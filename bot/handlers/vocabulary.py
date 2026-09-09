@@ -14,11 +14,13 @@ from bot.utils.keyboards import (
     vocabulary_menu_keyboard,
     vocabulary_theme_keyboard,
 )
+from bot.utils.languages import language_info
 from bot.utils.states import VocabularyStates
 
 router = Router()
 
 THEME_LABELS = {
+    "basics": "Основы",
     "numbers": "Числа",
     "days": "Дни недели",
     "food": "Еда",
@@ -37,26 +39,44 @@ THEME_LABELS = {
 }
 
 
-def _load_wordlists(theme_filter: str | None = None) -> list[dict]:
+def _load_wordlists(
+    theme_filter: str | None = None,
+    language: str = "english",
+) -> list[dict]:
     words = []
-    for path in WORDLISTS_DIR.glob("*.json"):
+    directory = (
+        WORDLISTS_DIR / "italian"
+        if language == "italian"
+        else WORDLISTS_DIR
+    )
+    for path in directory.glob("*.json"):
         data = json.loads(path.read_text(encoding="utf-8"))
         theme = data.get("theme", path.stem)
-        if theme_filter and theme != theme_filter:
-            continue
         for item in data.get("words", []):
-            words.append({**item, "theme": theme})
+            item_theme = item.get("theme", theme)
+            if theme_filter and item_theme != theme_filter:
+                continue
+            words.append({**item, "theme": item_theme})
     return words
 
 
-def _available_themes() -> list[tuple[str, str]]:
-    themes = sorted({item["theme"] for item in _load_wordlists()})
+def _available_themes(language: str = "english") -> list[tuple[str, str]]:
+    themes = sorted(
+        {item["theme"] for item in _load_wordlists(language=language)}
+    )
     return [(theme, THEME_LABELS.get(theme, theme.capitalize())) for theme in themes]
 
 
 @router.message(F.text == "🔤 Слова")
 async def start_vocabulary(message: Message, state: FSMContext) -> None:
     ctx = get_app_context()
+    profile = await ctx.users.get_profile(
+        message.from_user.id,
+        message.from_user.username,
+    )
+    if not profile.onboarding_completed:
+        await message.answer("Сначала выбери язык и пройди настройку: /start")
+        return
     session = ctx.user_sessions.setdefault(message.from_user.id, {})
     if session.get("daily"):
         session["daily"]["active"] = False
@@ -103,12 +123,14 @@ async def choose_vocabulary_theme(
     callback: CallbackQuery,
     state: FSMContext,
 ) -> None:
+    ctx = get_app_context()
+    language = await ctx.db.get_learning_language(callback.from_user.id)
     _cancel_daily(callback.from_user.id)
     await state.clear()
     await callback.answer()
     await callback.message.answer(
         "Выбери тему для следующей порции:",
-        reply_markup=vocabulary_theme_keyboard(_available_themes()),
+        reply_markup=vocabulary_theme_keyboard(_available_themes(language)),
     )
 
 
@@ -155,8 +177,15 @@ async def start_review_session(
     )
     if not due:
         return False
+    language = await ctx.db.get_learning_language(user_id)
     session = ctx.user_sessions.setdefault(user_id, {})
-    session.update({"vocab_reviews": due, "review_index": 0})
+    session.update(
+        {
+            "vocab_reviews": due,
+            "review_index": 0,
+            "vocab_language": language,
+        }
+    )
     await state.set_state(VocabularyStates.reviewing)
     await message.answer(f"🔁 Активное повторение: {len(due)} слов")
     await _send_review_front(message, user_id)
@@ -186,6 +215,7 @@ async def learn_new_batch(
     batch_limit: int | None = None,
 ) -> int:
     ctx = get_app_context()
+    profile = await ctx.users.get_profile(user_id)
     learned_today = await ctx.vocabulary.get_words_learned_today(user_id)
     remaining = max(0, ctx.settings.max_new_words_per_day - learned_today)
     requested = batch_limit or ctx.settings.new_words_per_day
@@ -199,11 +229,15 @@ async def learn_new_batch(
             await send_vocabulary_menu(message, user_id)
         return 0
 
-    all_words = _load_wordlists(theme_filter)
+    all_words = _load_wordlists(theme_filter, profile.learning_language)
     random.shuffle(all_words)
     new_words = []
     for item in all_words:
-        if await ctx.vocabulary.user_has_word(user_id, item["word"]):
+        if await ctx.vocabulary.user_has_word(
+            user_id,
+            item["word"],
+            profile.learning_language,
+        ):
             continue
         new_words.append(item)
         if len(new_words) >= batch_size:
@@ -225,8 +259,17 @@ async def learn_new_batch(
     )
     await message.answer(f"🔤 Новая порция: {len(new_words)} слов{theme_text}")
     for item in new_words:
-        dict_data = await ctx.dictionary.lookup(item["word"])
-        examples = await ctx.tatoeba.get_examples(item["word"], limit=1)
+        is_english = profile.learning_language == "english"
+        dict_data = (
+            await ctx.dictionary.lookup(item["word"])
+            if is_english
+            else {}
+        )
+        examples = (
+            await ctx.tatoeba.get_examples(item["word"], limit=1)
+            if is_english
+            else []
+        )
         example_en = examples[0]["en"] if examples else dict_data.get("example", "")
         example_ru = examples[0]["ru"] if examples else ""
         await ctx.vocabulary.add_word(
@@ -237,6 +280,7 @@ async def learn_new_batch(
             transcription=dict_data.get("phonetic", ""),
             example_en=example_en,
             example_ru=example_ru,
+            language=profile.learning_language,
         )
         text = (
             f"📝 <b>{html.escape(item['word'])}</b> "
@@ -248,14 +292,32 @@ async def learn_new_batch(
             if example_ru:
                 text += f" ({html.escape(str(example_ru))})"
         await message.answer(text, parse_mode="HTML")
-        audio_path = await ctx.tts.get_word_audio(item["word"], dict_data.get("audio_url", ""))
+        if is_english:
+            audio_path = await ctx.tts.get_word_audio(
+                item["word"],
+                dict_data.get("audio_url", ""),
+            )
+        else:
+            audio_path = await ctx.tts.synthesize(
+                item["word"],
+                lang=str(language_info(profile.learning_language)["tts"]),
+            )
         if audio_path:
             await message.answer_voice(FSInputFile(audio_path))
 
-    count = await ctx.vocabulary.get_words_count(user_id)
+    count = await ctx.vocabulary.get_words_count(
+        user_id,
+        profile.learning_language,
+    )
     if count >= 10:
         await ctx.db.unlock_achievement(user_id, "ten_words")
-    await ctx.progress.record_lesson(user_id, "vocabulary", "new_words", score=100)
+    await ctx.progress.record_lesson(
+        user_id,
+        "vocabulary",
+        "new_words",
+        score=100,
+        language=profile.learning_language,
+    )
     await ctx.db.touch_activity(user_id)
     await message.answer(
         f"Порция завершена. Эти слова пока в статусе «изучаются».\n"
@@ -309,7 +371,12 @@ async def review_word(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer("Сессия устарела", show_alert=True)
         await state.clear()
         return
-    await ctx.vocabulary.review_word(user_id, int(word_id), int(quality))
+    await ctx.vocabulary.review_word(
+        user_id,
+        int(word_id),
+        int(quality),
+        language=session.get("vocab_language", "english"),
+    )
     idx = int(session.get("review_index", 0)) + 1
     session["review_index"] = idx
     ctx.user_sessions[user_id] = session
@@ -320,7 +387,13 @@ async def review_word(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     if idx >= len(reviews):
         await state.clear()
-        await ctx.progress.record_lesson(user_id, "vocabulary", "review", score=100)
+        await ctx.progress.record_lesson(
+            user_id,
+            "vocabulary",
+            "review",
+            score=100,
+            language=session.get("vocab_language", "english"),
+        )
         await callback.message.answer("🔁 Повторение завершено!")
         if not await _continue_daily(
             callback.message,

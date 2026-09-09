@@ -29,6 +29,9 @@ async def start_reading(
     ctx = get_app_context()
     user_id = user_id_override or message.from_user.id
     profile = await ctx.users.get_profile(user_id)
+    if not profile.onboarding_completed:
+        await message.answer("Сначала выбери язык и пройди настройку: /start")
+        return
     session = ctx.user_sessions.setdefault(user_id, {})
     if not part_of_daily and session.get("daily"):
         session["daily"]["active"] = False
@@ -42,6 +45,7 @@ async def start_reading(
         profile.level,
         variant,
         [item["word"] for item in recent_words],
+        profile.learning_language,
     )
     session.update(
         {
@@ -49,6 +53,7 @@ async def start_reading(
             "reading_id": secrets.token_hex(4),
             "reading_topic": topic,
             "reading_variant": variant,
+            "reading_language": profile.learning_language,
             "q_index": 0,
             "score": 0,
         }
@@ -125,6 +130,7 @@ async def reading_answer(callback: CallbackQuery, state: FSMContext) -> None:
             "reading",
             lesson_id,
             score=pct,
+            language=session.get("reading_language", "english"),
         )
         await ctx.db.touch_activity(user_id)
         await ctx.db.unlock_achievement(user_id, "first_lesson")

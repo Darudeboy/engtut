@@ -2,6 +2,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class OnboardingStates(StatesGroup):
+    language = State()
     level_test = State()
     goal = State()
     reminder = State()

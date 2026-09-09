@@ -4,6 +4,7 @@ from aiogram.types import Message
 
 from bot.utils.content import ACHIEVEMENTS
 from bot.utils.context import get_app_context
+from bot.utils.languages import language_label
 
 router = Router()
 
@@ -20,6 +21,7 @@ async def show_stats(message: Message) -> None:
 
     text = (
         "📊 Твой прогресс\n\n"
+        f"Язык: {language_label(stats['learning_language'])}\n"
         f"Уровень: {stats['level']}\n"
         f"🔥 Streak: {stats['streak_days']} дн.\n"
         f"👀 Слов встречено: {stats['words_introduced']}\n"

@@ -14,6 +14,7 @@ class UserProfile:
     streak_days: int
     onboarding_completed: bool
     writing_level: int
+    learning_language: str
 
 
 class UserRepository:
@@ -30,6 +31,7 @@ class UserRepository:
             streak_days=int(row.get("streak_days") or 0),
             onboarding_completed=bool(row.get("onboarding_completed")),
             writing_level=int(row.get("writing_level") or 1),
+            learning_language=str(row.get("learning_language") or "english"),
         )
 
     async def complete_onboarding(

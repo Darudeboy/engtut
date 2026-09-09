@@ -8,6 +8,7 @@ from typing import Any
 import openai
 
 from bot.config import PROMPTS_DIR, Settings
+from bot.utils.languages import language_info
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,12 @@ class DeepSeekService:
         level: str = "Pre-A1",
         variant: int = 0,
         focus_words: list[str] | None = None,
+        language: str = "english",
     ) -> dict[str, Any]:
-        system = _load_prompt("exercises.txt") or (
-            "You are a friendly English tutor for Russian-speaking beginners."
+        target = language_info(language)["name_en"]
+        system = (
+            f"You are a friendly {target} tutor for Russian-speaking learners. "
+            "Explanations and translations must be in Russian."
         )
         word_range = {
             "Pre-A1": "45-70",
@@ -77,7 +81,7 @@ class DeepSeekService:
         }.get(level, "80-120")
         user = (
             f"Create variation {variant} of a {level} reading lesson about '{topic}'. "
-            f"The English-only text must contain {word_range} words.\n"
+            f"The {target}-only text must contain {word_range} words.\n"
             "Return JSON only with keys: title, text, keywords (4-6 items with "
             "word and Russian translation), questions. Create exactly 4 questions: "
             "main idea, factual detail, vocabulary in context, and sequence or "
@@ -103,15 +107,20 @@ class DeepSeekService:
             return result
         except Exception as exc:
             logger.warning("DeepSeek reading fallback: %s", exc)
-            return self._fallback_reading(topic, level)
+            return self._fallback_reading(topic, level, language)
 
     async def generate_grammar_exercise(
         self,
         topic: str,
         level: str = "Pre-A1",
         variant: int = 0,
+        language: str = "english",
     ) -> dict[str, Any]:
-        system = _load_prompt("exercises.txt") or "You are an English grammar tutor."
+        target = language_info(language)["name_en"]
+        system = (
+            f"You are a {target} grammar tutor for Russian-speaking learners. "
+            "Explain grammar in Russian."
+        )
         user = (
             f"Create variation {variant} of a grammar lesson on '{topic}' "
             f"for level {level}.\n"
@@ -132,16 +141,19 @@ class DeepSeekService:
             return result
         except Exception as exc:
             logger.warning("DeepSeek grammar fallback: %s", exc)
-            return self._fallback_grammar(topic)
+            return self._fallback_grammar(topic, language)
 
     async def generate_listening_lesson(
         self,
         topic: str,
         level: str,
         variant: int,
+        language: str = "english",
     ) -> dict[str, Any]:
-        system = _load_prompt("listening.txt") or (
-            "Create a short level-appropriate English listening task."
+        target = language_info(language)["name_en"]
+        system = (
+            f"Create a short level-appropriate {target} listening task "
+            "for a Russian-speaking learner."
         )
         user = (
             f"CEFR level: {level}. Topic: {topic}. Variation: {variant}.\n"
@@ -149,7 +161,7 @@ class DeepSeekService:
             "Create exactly 3 questions. Each question must contain question, "
             "exactly 3 options, correct_index, explanation_ru. "
             "Test gist and concrete details from the transcript. "
-            "Do not put Russian words in the transcript."
+            f"The transcript must contain only {target}, with no Russian words."
         )
         try:
             content = self._chat(system, user, temperature=0.4)
@@ -164,15 +176,17 @@ class DeepSeekService:
             return result
         except Exception as exc:
             logger.warning("DeepSeek listening fallback: %s", exc)
-            return self._fallback_listening(level, topic)
+            return self._fallback_listening(level, topic, language)
 
     async def check_writing_answer(
         self,
         target_phrase: str,
         user_answer: str,
         level: str = "Pre-A1",
+        language: str = "english",
     ) -> dict[str, Any]:
-        system = _load_prompt("feedback.txt") or "Evaluate beginner English answers gently."
+        target = language_info(language)["name_en"]
+        system = f"Evaluate beginner {target} answers gently. Reply in Russian."
         user = (
             f'Learner level: {level}. Expected: "{target_phrase}". '
             f'Answer: "{user_answer}". '
@@ -193,9 +207,11 @@ class DeepSeekService:
         user_answer: str,
         level: str,
         min_words: int,
+        language: str = "english",
     ) -> dict[str, Any]:
+        target = language_info(language)["name_en"]
         system = (
-            "You assess short English writing by beginner learners. "
+            f"You assess short {target} writing by beginner learners. "
             "Judge whether the answer communicates the requested meaning. "
             "Do not require an exact match with the example. Be supportive, "
             "but mark an answer correct only when it follows the requirements."
@@ -220,12 +236,12 @@ class DeepSeekService:
             return result
         except Exception as exc:
             logger.warning("DeepSeek open writing check fallback: %s", exc)
-            words = re.findall(r"[A-Za-z]+(?:['’][A-Za-z]+)?", user_answer)
+            words = re.findall(r"[^\W\d_]+(?:['’][^\W\d_]+)?", user_answer, re.UNICODE)
             if len(words) < min_words:
                 return {
                     "status": "incorrect",
                     "feedback": (
-                        f"Нужно написать не менее {min_words} английских слов. "
+                        f"Нужно написать не менее {min_words} слов. "
                         f"Сейчас: {len(words)}."
                     ),
                     "correct_answer": reference,
@@ -243,9 +259,14 @@ class DeepSeekService:
         history: list[dict[str, str]],
         level: str = "Pre-A1",
         success_criteria: list[str] | None = None,
+        language: str = "english",
     ) -> str:
-        system = _load_prompt("dialogues.txt") or "You are a friendly dialogue partner."
-        system = system.format(role=role, scenario=scenario, level=level)
+        target = language_info(language)["name_en"]
+        system = (
+            f"You are {role} in this situation: {scenario}. "
+            f"Speak only {target}, at CEFR level {level}. "
+            "If the learner writes in Russian, include a short Russian translation."
+        )
         if success_criteria:
             system += (
                 "\nHelp the learner naturally achieve these goals: "
@@ -255,7 +276,7 @@ class DeepSeekService:
         messages = [{"role": "system", "content": system}]
         messages.extend(history)
         if not self.client:
-            return self._fallback_dialogue_reply(scenario, history)
+            return self._fallback_dialogue_reply(scenario, history, language)
         try:
             response = self.client.chat.completions.create(
                 model=self.settings.deepseek_model,
@@ -265,22 +286,28 @@ class DeepSeekService:
             return response.choices[0].message.content or ""
         except Exception as exc:
             logger.warning("DeepSeek dialogue fallback: %s", exc)
-            return self._fallback_dialogue_reply(scenario, history)
+            return self._fallback_dialogue_reply(scenario, history, language)
 
     async def dialogue_hint(
         self,
         scenario: str,
         last_bot_message: str,
         level: str = "Pre-A1",
+        language: str = "english",
     ) -> str:
+        target = language_info(language)["name_en"]
         user = (
             f"Scenario: {scenario}. Bot said: {last_bot_message}. "
-            f"Give one short {level}-level answer hint in Russian and English."
+            f"Give one short {level}-level answer hint in Russian and {target}."
         )
         try:
             return self._chat("You help beginners in dialogues.", user, temperature=0.4)
         except Exception:
-            return "Try: Hello! / Привет!"
+            return (
+                "Попробуй: Ciao! / Привет!"
+                if language == "italian"
+                else "Try: Hello! / Привет!"
+            )
 
     async def assess_dialogue(
         self,
@@ -288,7 +315,9 @@ class DeepSeekService:
         history: list[dict[str, str]],
         level: str,
         success_criteria: list[str],
+        language: str = "english",
     ) -> dict[str, Any]:
+        target = language_info(language)["name_en"]
         user_turns = [
             item.get("content", "")
             for item in history
@@ -302,12 +331,12 @@ class DeepSeekService:
             "Return JSON only: "
             '{"score":0-100,"feedback_ru":"2-3 useful sentences",'
             '"strengths":["..."],"improvements":["..."],'
-            '"useful_phrases":["English — Russian"]}. '
+            f'"useful_phrases":["{target} — Russian"]}}. '
             "Score communication and completion of the scenario, not perfect grammar."
         )
         try:
             content = self._chat(
-                "You are a fair and practical English speaking assessor.",
+                f"You are a fair and practical {target} speaking assessor.",
                 user,
                 temperature=0.2,
             )
@@ -329,12 +358,20 @@ class DeepSeekService:
                 ),
                 "strengths": ["Ты поддержал(а) разговор."],
                 "improvements": ["Добавляй один новый факт в каждую реплику."],
-                "useful_phrases": ["Could you repeat that? — Повторите, пожалуйста."],
+                "useful_phrases": [
+                    (
+                        "Può ripetere, per favore? — Повторите, пожалуйста."
+                        if language == "italian"
+                        else "Could you repeat that? — Повторите, пожалуйста."
+                    )
+                ],
             }
 
     async def weekly_summary(self, stats: dict[str, Any]) -> str:
+        target = language_info(stats.get("learning_language"))["name_en"]
         user = (
-            "Create a short encouraging weekly progress summary in Russian for an English learner. "
+            f"Create a short encouraging weekly progress summary in Russian "
+            f"for a {target} learner. "
             f"Data: {json.dumps(stats, ensure_ascii=False)}"
         )
         try:
@@ -351,11 +388,13 @@ class DeepSeekService:
         history: list[dict[str, Any]],
         user_message: str,
     ) -> str:
+        language = str(learner_context.get("learning_language") or "english")
+        target = language_info(language)["name_ru"]
         system = (
-            "Ты персональный наставник по английскому для русскоязычного ученика. "
+            f"Ты персональный наставник по {target} языку для русскоязычного ученика. "
             "Учитывай уровень, цель, прогресс и слабые темы из контекста. "
-            "Поддерживай естественный разговор на русском или английском. "
-            "Если ученик пишет по-английски, сначала ответь по смыслу, затем мягко "
+            f"Поддерживай естественный разговор на русском или на языке «{target}». "
+            f"Если ученик пишет на языке «{target}», сначала ответь по смыслу, затем мягко "
             "исправь максимум одну важную ошибку. Не перегружай правилами. "
             "Предлагай один конкретный следующий шаг, когда это уместно. "
             "Не утверждай, что запустил урок или изменил данные — это делает бот. "
@@ -404,9 +443,11 @@ class DeepSeekService:
         learner_context: dict[str, Any],
         user_message: str,
     ) -> str:
+        language = str(learner_context.get("learning_language") or "english")
+        target_ru = language_info(language)["name_ru"]
         if re.search(r"[A-Za-z]{3,}", user_message):
             return (
-                "Я понял твою мысль. Продолжай писать по-английски полными "
+                f"Я понял твою мысль. Продолжай писать по-{target_ru} полными "
                 "короткими предложениями — так навык растёт быстрее. "
                 "Для следующей практики можно написать: «давай диалог»."
             )
@@ -417,12 +458,57 @@ class DeepSeekService:
                 "Напиши «давай слова», и я открою нужный раздел."
             )
         return (
-            "Я рядом как наставник по английскому. Можешь задать вопрос, "
+            f"Я рядом как наставник по {target_ru} языку. Можешь задать вопрос, "
             "написать фразу для проверки или попросить: «давай грамматику», "
             "«покажи прогресс» или «что дальше?»."
         )
 
-    def _fallback_reading(self, topic: str, level: str = "Pre-A1") -> dict[str, Any]:
+    def _fallback_reading(
+        self,
+        topic: str,
+        level: str = "Pre-A1",
+        language: str = "english",
+    ) -> dict[str, Any]:
+        if language == "italian":
+            return {
+                "title": f"Vita quotidiana · {level}",
+                "text": (
+                    "Luca è uno studente. Vive a Roma con la sua famiglia. "
+                    "Gli piacciono il caffè e i libri. Ogni mattina va a scuola a piedi."
+                ),
+                "keywords": [
+                    {"word": "studente", "translation": "студент"},
+                    {"word": "famiglia", "translation": "семья"},
+                    {"word": "libri", "translation": "книги"},
+                    {"word": "a piedi", "translation": "пешком"},
+                ],
+                "questions": [
+                    {
+                        "question": "Dove vive Luca?",
+                        "options": ["A Roma", "A Milano", "A Napoli"],
+                        "correct_index": 0,
+                        "explanation_ru": "Лука живёт в Риме.",
+                    },
+                    {
+                        "question": "Con chi vive?",
+                        "options": ["Con amici", "Con la famiglia", "Da solo"],
+                        "correct_index": 1,
+                        "explanation_ru": "Он живёт со своей семьёй.",
+                    },
+                    {
+                        "question": "Che cosa gli piace?",
+                        "options": ["Il tè", "Lo sport", "Il caffè e i libri"],
+                        "correct_index": 2,
+                        "explanation_ru": "Ему нравятся кофе и книги.",
+                    },
+                    {
+                        "question": "Come va a scuola?",
+                        "options": ["A piedi", "In autobus", "In treno"],
+                        "correct_index": 0,
+                        "explanation_ru": "Он ходит в школу пешком.",
+                    },
+                ],
+            }
         return {
             "title": f"{topic.capitalize()} · {level}",
             "text": (
@@ -466,7 +552,40 @@ class DeepSeekService:
             ],
         }
 
-    def _fallback_listening(self, level: str, topic: str) -> dict[str, Any]:
+    def _fallback_listening(
+        self,
+        level: str,
+        topic: str,
+        language: str = "english",
+    ) -> dict[str, Any]:
+        if language == "italian":
+            return {
+                "title": f"Ascolto: {topic}",
+                "transcript": (
+                    "Mi chiamo Giulia e vivo a Firenze. Lavoro in un piccolo albergo. "
+                    "Comincio alle nove e pranzo con i miei colleghi."
+                ),
+                "questions": [
+                    {
+                        "question": "Dove vive Giulia?",
+                        "options": ["A Firenze", "A Torino", "A Roma"],
+                        "correct_index": 0,
+                        "explanation_ru": "Джулия живёт во Флоренции.",
+                    },
+                    {
+                        "question": "Dove lavora?",
+                        "options": ["In una scuola", "In un albergo", "In un bar"],
+                        "correct_index": 1,
+                        "explanation_ru": "Она работает в небольшом отеле.",
+                    },
+                    {
+                        "question": "A che ora comincia?",
+                        "options": ["Alle otto", "Alle nove", "Alle dieci"],
+                        "correct_index": 1,
+                        "explanation_ru": "Она начинает в девять.",
+                    },
+                ],
+            }
         if level == "A2":
             transcript = (
                 "Mia planned to take the early train to the city, but it was "
@@ -513,7 +632,50 @@ class DeepSeekService:
             ],
         }
 
-    def _fallback_grammar(self, topic: str) -> dict[str, Any]:
+    def _fallback_grammar(
+        self,
+        topic: str,
+        language: str = "english",
+    ) -> dict[str, Any]:
+        if language == "italian":
+            return {
+                "explanation_ru": (
+                    "Глагол essere («быть»): io sono, tu sei, lui/lei è, "
+                    "noi siamo, voi siete, loro sono."
+                ),
+                "questions": [
+                    {
+                        "prompt": "Io ___ studente.",
+                        "options": ["sono", "sei", "è"],
+                        "correct_index": 0,
+                        "hint_ru": "После io используется sono.",
+                    },
+                    {
+                        "prompt": "Maria ___ italiana.",
+                        "options": ["sei", "è", "siamo"],
+                        "correct_index": 1,
+                        "hint_ru": "Для Maria используется è.",
+                    },
+                    {
+                        "prompt": "Noi ___ amici.",
+                        "options": ["sono", "siete", "siamo"],
+                        "correct_index": 2,
+                        "hint_ru": "После noi используется siamo.",
+                    },
+                    {
+                        "prompt": "Выбери правильную фразу.",
+                        "options": ["Tu sei pronto", "Tu sono pronto", "Tu è pronto"],
+                        "correct_index": 0,
+                        "hint_ru": "После tu используется sei.",
+                    },
+                    {
+                        "prompt": "Loro ___ a casa.",
+                        "options": ["sono", "è", "sei"],
+                        "correct_index": 0,
+                        "hint_ru": "После loro используется sono.",
+                    },
+                ],
+            }
         exercises = {
             "to be": {
                 "explanation_ru": "Глагол to be: I → am, You/We/They → are, He/She/It → is.",
@@ -567,7 +729,22 @@ class DeepSeekService:
             feedback = f"Попробуй ещё. Правильно: {target}"
         return {"status": status, "feedback": feedback, "correct_answer": target}
 
-    def _fallback_dialogue_reply(self, scenario: str, history: list[dict[str, str]]) -> str:
+    def _fallback_dialogue_reply(
+        self,
+        scenario: str,
+        history: list[dict[str, str]],
+        language: str = "english",
+    ) -> str:
+        if language == "italian":
+            replies = {
+                "introduction": ["Ciao! 👋", "Piacere!", "Come ti chiami?", "A presto! 👋"],
+                "coffee": ["Buongiorno! ☕", "Che cosa desidera?", "Piccolo o grande?", "Ecco a Lei!"],
+                "ticket": ["Buongiorno! 🎫", "Dove vuole andare?", "Solo andata?", "Buon viaggio!"],
+                "small_talk": ["Ciao! 😊", "Bella giornata!", "Ti piace la musica?", "Anche a me!"],
+            }
+            user_turns = sum(1 for msg in history if msg.get("role") == "user")
+            options = replies.get(scenario, replies["introduction"])
+            return options[min(user_turns, len(options) - 1)]
         replies = {
             "introduction": ["Hello! 👋", "Nice to meet you! 😊", "What is your name?", "Great! See you soon! 👋"],
             "coffee": ["Hello! ☕", "What would you like?", "Small or large?", "Here you are! Enjoy! 😊"],

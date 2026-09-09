@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.utils.content import GRAMMAR_TOPICS_BY_LEVEL
 from bot.utils.context import get_app_context
+from bot.utils.italian_content import ITALIAN_GRAMMAR_TOPICS_BY_LEVEL
 from bot.utils.keyboards import options_keyboard
 from bot.utils.states import GrammarStates
 
@@ -20,26 +21,37 @@ async def start_grammar(
 ) -> None:
     ctx = get_app_context()
     user_id = user_id_override or message.from_user.id
+    profile = await ctx.users.get_profile(user_id)
+    if not profile.onboarding_completed:
+        await message.answer("Сначала выбери язык и пройди настройку: /start")
+        return
     session = ctx.user_sessions.setdefault(user_id, {})
     if not part_of_daily and session.get("daily"):
         session["daily"]["active"] = False
     user = await ctx.db.get_or_create_user(user_id)
     level = user.get("level", "Pre-A1")
-    topics = GRAMMAR_TOPICS_BY_LEVEL.get(
+    language = str(user.get("learning_language") or "english")
+    topic_sets = (
+        ITALIAN_GRAMMAR_TOPICS_BY_LEVEL
+        if language == "italian"
+        else GRAMMAR_TOPICS_BY_LEVEL
+    )
+    topics = topic_sets.get(
         level,
-        GRAMMAR_TOPICS_BY_LEVEL["A1"],
+        topic_sets["A1"],
     )
     topic_index = int(user.get("grammar_topic_index") or 0) % len(topics)
     topic = topics[topic_index]
     attempts = await ctx.db.get_lesson_attempt_count(user_id, "grammar")
     variant = attempts % 3
-    cache_key = f"grammar:{level}:{topic}:{variant}"
+    cache_key = f"grammar:{language}:{level}:{topic}:{variant}"
     lesson = await ctx.db.get_cache(cache_key)
     if not lesson:
         lesson = await ctx.deepseek.generate_grammar_exercise(
             topic,
             level,
             variant,
+            language,
         )
         await ctx.db.set_cache(cache_key, lesson)
 
@@ -51,6 +63,7 @@ async def start_grammar(
             "topic_index": topic_index,
             "topic_count": len(topics),
             "grammar_variant": variant,
+            "grammar_language": language,
             "q_index": 0,
             "score": 0,
             "mistakes": 0,
@@ -119,7 +132,11 @@ async def grammar_answer(callback: CallbackQuery, state: FSMContext) -> None:
             topic_index = (
                 topic_index + 1
             ) % int(session.get("topic_count", 1))
-            await ctx.db.update_user(user_id, grammar_topic_index=topic_index)
+            await ctx.db.update_learning_profile(
+                user_id,
+                language=session.get("grammar_language", "english"),
+                grammar_topic_index=topic_index,
+            )
         lesson_id = (
             f"{session.get('topic', 'grammar')}:"
             f"{session.get('grammar_variant', 0)}"
@@ -129,6 +146,7 @@ async def grammar_answer(callback: CallbackQuery, state: FSMContext) -> None:
             "grammar",
             lesson_id,
             score=pct,
+            language=session.get("grammar_language", "english"),
         )
         await ctx.db.touch_activity(user_id)
         await state.clear()

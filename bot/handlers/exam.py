@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.utils.context import get_app_context
 from bot.utils.exam_content import EXAMS, SECTION_LABELS
+from bot.utils.italian_content import ITALIAN_EXAMS
 from bot.utils.keyboards import main_menu_keyboard, options_keyboard
 from bot.utils.states import ExamStates
 
@@ -42,7 +43,8 @@ async def start_exam(message: Message, state: FSMContext) -> None:
     if daily:
         daily["active"] = False
 
-    exam = EXAMS[target_level]
+    exams = ITALIAN_EXAMS if profile.learning_language == "italian" else EXAMS
+    exam = exams[target_level]
     token = secrets.token_hex(4)
     section_scores = {
         section: {"correct": 0, "total": 0}
@@ -53,6 +55,7 @@ async def start_exam(message: Message, state: FSMContext) -> None:
         "token": token,
         "source_level": profile.level,
         "target_level": target_level,
+        "language": profile.learning_language,
         "question_index": 0,
         "score": 0,
         "section_scores": section_scores,
@@ -98,7 +101,8 @@ async def exam_answer(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     target_level = exam_session["target_level"]
-    questions = EXAMS[target_level]["questions"]
+    exams = ITALIAN_EXAMS if exam_session.get("language") == "italian" else EXAMS
+    questions = exams[target_level]["questions"]
     if question_index >= len(questions):
         await callback.answer("Экзамен уже завершён", show_alert=True)
         return
@@ -134,7 +138,8 @@ async def _send_exam_question(message: Message, user_id: int) -> None:
     ctx = get_app_context()
     exam_session = ctx.user_sessions.get(user_id, {}).get("exam", {})
     target_level = exam_session.get("target_level")
-    questions = EXAMS.get(target_level, {}).get("questions", [])
+    exams = ITALIAN_EXAMS if exam_session.get("language") == "italian" else EXAMS
+    questions = exams.get(target_level, {}).get("questions", [])
     index = int(exam_session.get("question_index", 0))
     if index >= len(questions):
         return
@@ -168,7 +173,8 @@ async def _finish_exam(
 ) -> None:
     ctx = get_app_context()
     exam_session = ctx.user_sessions[user_id]["exam"]
-    questions = EXAMS[exam_session["target_level"]]["questions"]
+    exams = ITALIAN_EXAMS if exam_session.get("language") == "italian" else EXAMS
+    questions = exams[exam_session["target_level"]]["questions"]
     score = int(exam_session["score"])
     total = len(questions)
     percentage = round(score / total * 100, 1)
@@ -186,12 +192,14 @@ async def _finish_exam(
         percentage=percentage,
         passed=passed,
         section_scores=section_scores,
+        language=exam_session.get("language", "english"),
     )
     await ctx.progress.record_lesson(
         user_id,
         "exam",
         f"{exam_session['source_level']}_to_{exam_session['target_level']}",
         score=percentage,
+        language=exam_session.get("language", "english"),
     )
     await ctx.db.touch_activity(user_id)
 
@@ -205,7 +213,11 @@ async def _finish_exam(
     breakdown = "\n".join(lines)
     if passed:
         target_level = exam_session["target_level"]
-        await ctx.db.update_user(user_id, level=target_level)
+        await ctx.db.update_learning_profile(
+            user_id,
+            language=exam_session.get("language", "english"),
+            level=target_level,
+        )
         await ctx.db.unlock_achievement(
             user_id,
             f"level_{target_level.lower()}",
