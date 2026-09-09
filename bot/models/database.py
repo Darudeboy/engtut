@@ -562,6 +562,7 @@ class Database:
             SELECT role, content, intent, created_at
             FROM tutor_messages
             WHERE user_id = ?
+              AND (intent IS NULL OR intent <> 'next')
             ORDER BY created_at DESC, id DESC
             LIMIT ?
             """,
@@ -569,9 +570,13 @@ class Database:
         )
         return [dict(row) for row in reversed(rows)]
 
-    async def clear_tutor_history(self, user_id: int) -> None:
+    async def clear_ai_history(self, user_id: int) -> None:
         await self.execute(
             "DELETE FROM tutor_messages WHERE user_id = ?",
+            (user_id,),
+        )
+        await self.execute(
+            "DELETE FROM dialogues WHERE user_id = ?",
             (user_id,),
         )
 
@@ -582,15 +587,23 @@ class Database:
     ) -> list[dict[str, Any]]:
         rows = await self.fetchall(
             """
-            SELECT module, lesson_id, AVG(score) AS avg_score, COUNT(*) AS attempts
-            FROM progress
-            WHERE user_id = ?
-              AND completed = 1
-              AND score IS NOT NULL
-              AND module IN ('reading', 'grammar', 'writing', 'listening', 'dialogue')
-            GROUP BY module, lesson_id
-            HAVING AVG(score) < 75
-            ORDER BY avg_score ASC, attempts DESC
+            SELECT p.module, p.lesson_id, p.score AS avg_score, 1 AS attempts
+            FROM progress AS p
+            WHERE p.user_id = ?
+              AND p.completed = 1
+              AND p.score < 75
+              AND p.module IN ('reading', 'grammar', 'writing', 'listening', 'dialogue')
+              AND p.id = (
+                  SELECT p2.id
+                  FROM progress AS p2
+                  WHERE p2.user_id = p.user_id
+                    AND p2.module = p.module
+                    AND p2.lesson_id = p.lesson_id
+                    AND p2.completed = 1
+                  ORDER BY p2.completed_at DESC, p2.id DESC
+                  LIMIT 1
+              )
+            ORDER BY p.score ASC, p.completed_at DESC
             LIMIT ?
             """,
             (user_id, limit),

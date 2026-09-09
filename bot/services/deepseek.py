@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -387,7 +388,8 @@ class DeepSeekService:
         if not self.client:
             return self._fallback_coach_reply(learner_context, user_message)
         try:
-            response = self.client.chat.completions.create(
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
                 model=self.settings.deepseek_model,
                 temperature=0.5,
                 messages=messages,

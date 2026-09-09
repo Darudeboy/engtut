@@ -1,5 +1,6 @@
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -11,10 +12,23 @@ logger = logging.getLogger(__name__)
 
 
 class ReminderService:
-    def __init__(self, db: Database, bot) -> None:
+    def __init__(
+        self,
+        db: Database,
+        bot,
+        timezone_name: str = "Europe/Moscow",
+    ) -> None:
         self.db = db
         self.bot = bot
-        self.scheduler = AsyncIOScheduler()
+        try:
+            self.timezone = ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            logger.warning(
+                "Unknown timezone %s; falling back to UTC",
+                timezone_name,
+            )
+            self.timezone = ZoneInfo("UTC")
+        self.scheduler = AsyncIOScheduler(timezone=self.timezone)
 
     async def start(self) -> None:
         self.scheduler.add_job(self.send_reminders, CronTrigger(minute="*/30"))
@@ -27,7 +41,7 @@ class ReminderService:
             self.scheduler.shutdown(wait=False)
 
     async def send_reminders(self) -> None:
-        now = datetime.now().strftime("%H:%M")
+        now = datetime.now(self.timezone).strftime("%H:%M")
         utc_now = datetime.now(UTC).replace(tzinfo=None)
         today_start = datetime.combine(utc_now.date(), datetime.min.time())
         rows = await self.db.fetchall(
@@ -47,13 +61,14 @@ class ReminderService:
                 await self.bot.send_message(
                     user_id,
                     text,
+                    parse_mode=None,
                 )
                 await self.db.record_reminder_event(user_id, "scheduled")
             except Exception as exc:
                 logger.warning("Failed to send reminder to %s: %s", user_id, exc)
 
     async def send_inactivity_reminders(self) -> None:
-        inactive_since = date.today() - timedelta(days=2)
+        inactive_since = datetime.now(self.timezone).date() - timedelta(days=2)
         rows = await self.db.fetchall(
             """
             SELECT user_id FROM users
@@ -77,6 +92,7 @@ class ReminderService:
                     user_id,
                     "👋 Давно не виделись! Даже короткая практика помогает.\n\n"
                     + recommendation["text"],
+                    parse_mode=None,
                 )
                 await self.db.record_reminder_event(user_id, "inactivity")
             except Exception as exc:

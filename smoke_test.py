@@ -44,6 +44,10 @@ async def test_database() -> None:
             assert await db.get_lesson_attempt_count(12345, "writing") == 1
             weak_topics = await db.get_weak_topics(12345)
             assert weak_topics[0]["module"] == "writing"
+            await progress.record_lesson(
+                12345, "writing", "test_writing", score=100.0
+            )
+            assert await db.get_weak_topics(12345) == []
             assert await db.has_progress_since(
                 12345,
                 "reading",
@@ -54,8 +58,19 @@ async def test_database() -> None:
             await db.add_tutor_message(12345, "assistant", "Hi!")
             tutor_history = await db.get_recent_tutor_messages(12345)
             assert [item["role"] for item in tutor_history] == ["user", "assistant"]
-            await db.clear_tutor_history(12345)
+            await db.execute(
+                """
+                INSERT INTO dialogues (user_id, scenario, messages, feedback)
+                VALUES (?, ?, ?, ?)
+                """,
+                (12345, "test", "[]", "test"),
+            )
+            await db.clear_ai_history(12345)
             assert await db.get_recent_tutor_messages(12345) == []
+            assert await db.fetchone(
+                "SELECT id FROM dialogues WHERE user_id = ?",
+                (12345,),
+            ) is None
 
             assert not await db.reminder_sent_since(
                 12345,
@@ -83,7 +98,7 @@ async def test_database() -> None:
             assert stats["words_introduced"] == 1
             assert stats["words_learning"] == 1
             assert stats["words_mastered"] == 0
-            assert stats["accuracy"] == 85.0
+            assert stats["accuracy"] == 90.0
 
             await db.execute(
                 "UPDATE user_words SET next_review = ? WHERE user_id = ?",
@@ -258,6 +273,9 @@ def test_coach_intents() -> None:
     assert detect_intent("Покажи мой прогресс") == "progress"
     assert detect_intent("Что мне делать дальше?") == "next"
     assert detect_intent("Как прошёл твой день?") is None
+    assert detect_intent("Please show me an example sentence") is None
+    assert detect_intent("Let us openly discuss grammar") is None
+    assert detect_intent("Я хочу написать письмо другу") is None
     print("coach intents: OK")
 
 

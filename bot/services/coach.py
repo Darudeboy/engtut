@@ -12,36 +12,6 @@ MODULE_LABELS = {
     "dialogue": "диалог",
 }
 
-INTENT_KEYWORDS = {
-    "grammar": ("грамматик", "grammar"),
-    "reading": ("чтени", "почита", "reading"),
-    "vocabulary": ("словар", "новые слова", "повторить слова", "vocabulary"),
-    "writing": ("письм", "writing"),
-    "listening": ("аудирован", "послуша", "listening"),
-    "dialogue": ("диалог", "поговорим", "поговорить", "dialogue"),
-    "progress": ("прогресс", "статистик", "результат"),
-    "daily": ("ежеднев", "задание дня", "daily"),
-    "exam": ("экзамен", "повысить уровень", "exam"),
-    "next": ("что дальше", "следующий шаг", "что мне делать"),
-}
-
-ACTION_WORDS = (
-    "давай",
-    "хочу",
-    "начни",
-    "начать",
-    "открой",
-    "покажи",
-    "запусти",
-    "перейди",
-    "потренируем",
-    "show",
-    "start",
-    "open",
-    "practice",
-    "let's",
-)
-
 EXACT_INTENTS = {
     "грамматика": "grammar",
     "grammar": "grammar",
@@ -62,18 +32,45 @@ EXACT_INTENTS = {
     "exam": "exam",
 }
 
+COMMON_ACTION = (
+    r"\b(?:давай|хочу\s+(?:учить|повторить|потренировать)|"
+    r"нач(?:ни|ать)|открой|покажи|запусти|перейди|"
+    r"потрениру\w*|show|start|open|practice|let['’]?s)\b"
+)
+
+LAUNCH_PATTERNS = {
+    "grammar": rf"{COMMON_ACTION}.{{0,24}}\b(?:грамматик\w*|grammar)\b",
+    "reading": rf"{COMMON_ACTION}.{{0,24}}\b(?:чтени\w*|почита\w*|reading)\b",
+    "vocabulary": (
+        rf"{COMMON_ACTION}.{{0,24}}"
+        r"(?:\bсловар\w*\b|\bслов\w*\b|\bvocabulary\b)"
+    ),
+    "listening": rf"{COMMON_ACTION}.{{0,24}}\b(?:аудирован\w*|послуша\w*|listening)\b",
+    "dialogue": rf"{COMMON_ACTION}.{{0,24}}\b(?:диалог\w*|поговор\w*|dialogue)\b",
+    "progress": rf"{COMMON_ACTION}.{{0,24}}\b(?:прогресс\w*|статистик\w*|results?)\b",
+    "daily": rf"{COMMON_ACTION}.{{0,24}}(?:ежеднев\w*|задани\w*\s+дня|\bdaily\b)",
+    "exam": rf"{COMMON_ACTION}.{{0,24}}(?:экзамен\w*|повысить\s+уровень|\bexam\b)",
+    # Intentionally excludes “хочу написать письмо другу”.
+    "writing": (
+        r"\b(?:давай|нач(?:ни|ать)|открой|запусти|перейди|"
+        r"потрениру\w*|start|open|practice|let['’]?s)\b"
+        r".{0,24}\b(?:письм\w*|writing)\b"
+    ),
+}
+
 
 def detect_intent(text: str) -> str | None:
     normalized = re.sub(r"\s+", " ", text.lower().replace("ё", "е")).strip()
     short_text = normalized.strip("!?., ")
     if short_text in EXACT_INTENTS:
         return EXACT_INTENTS[short_text]
-    if any(keyword in short_text for keyword in INTENT_KEYWORDS["next"]):
+    if re.search(
+        r"\b(?:что\s+(?:мне\s+)?(?:делать\s+)?дальше|следующ\w*\s+шаг)\b",
+        short_text,
+    ):
         return "next"
-    if not any(word in normalized for word in ACTION_WORDS):
-        return None
-    for intent, keywords in INTENT_KEYWORDS.items():
-        if any(keyword in normalized for keyword in keywords):
+    for intent, pattern in LAUNCH_PATTERNS.items():
+        if re.search(pattern, normalized):
             return intent
     return None
 

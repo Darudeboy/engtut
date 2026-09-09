@@ -19,7 +19,7 @@ from bot.handlers.menu import router as menu_router
 from bot.handlers.onboarding import router as onboarding_router
 from bot.handlers.progress import router as progress_router
 from bot.handlers.reading import router as reading_router
-from bot.handlers.tutor import router as tutor_router
+from bot.handlers.tutor import privacy_router, router as tutor_router
 from bot.handlers.vocabulary import router as vocabulary_router
 from bot.handlers.writing import router as writing_router
 from bot.services.reminders import ReminderService
@@ -57,6 +57,7 @@ async def main() -> None:
     bot = create_bot(settings)
 
     dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(privacy_router)
     dp.include_router(onboarding_router)
     dp.include_router(daily_router)
     dp.include_router(exam_router)
@@ -70,7 +71,11 @@ async def main() -> None:
     dp.include_router(progress_router)
     dp.include_router(tutor_router)
 
-    reminders = ReminderService(app_context.db, bot)
+    reminders = ReminderService(
+        app_context.db,
+        bot,
+        settings.app_timezone,
+    )
     await reminders.start()
 
     logger.info("English Tutor Bot started")

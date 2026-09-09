@@ -10,6 +10,7 @@ from bot.services.coach import (
 )
 from bot.utils.context import get_app_context
 
+privacy_router = Router()
 router = Router()
 
 INTENT_LABELS = {
@@ -25,12 +26,19 @@ INTENT_LABELS = {
 }
 
 
-@router.message(StateFilter(None), Command("forget"))
-async def forget_tutor_history(message: Message) -> None:
+@privacy_router.message(Command("forget"))
+async def forget_tutor_history(
+    message: Message,
+    state: FSMContext,
+) -> None:
     ctx = get_app_context()
-    await ctx.db.clear_tutor_history(message.from_user.id)
+    user_id = message.from_user.id
+    await ctx.db.clear_ai_history(user_id)
+    ctx.user_sessions.pop(user_id, None)
+    await state.clear()
     await message.answer(
-        "История общения с AI-наставником удалена.",
+        "История AI-наставника и учебных диалогов удалена. "
+        "Активное упражнение остановлено.",
         parse_mode=None,
     )
 
@@ -65,8 +73,6 @@ async def tutor_message(message: Message, state: FSMContext) -> None:
 
     if intent in INTENT_LABELS:
         await _dispatch_intent(intent, message, state)
-        reply = f"Открыт раздел «{INTENT_LABELS[intent]}»."
-        await ctx.db.add_tutor_message(user_id, "assistant", reply, intent)
         return
 
     learner_context = await build_learner_context(ctx.db, user_id)
@@ -79,6 +85,8 @@ async def tutor_message(message: Message, state: FSMContext) -> None:
         "Я не смог сформулировать ответ. Попробуй написать вопрос короче "
         "или попроси открыть конкретный раздел."
     )
+    if len(reply) > 4000:
+        reply = reply[:3997] + "..."
     await ctx.db.add_tutor_message(user_id, "assistant", reply)
     await message.answer(reply, parse_mode=None)
 
@@ -138,10 +146,4 @@ async def send_next_step(
         exclude_module=exclude_module,
     )
     reply = f"💡 Следующий шаг: {recommendation['text']}"
-    await ctx.db.add_tutor_message(
-        user_id,
-        "assistant",
-        reply,
-        "next",
-    )
     await message.answer(reply, parse_mode=None)

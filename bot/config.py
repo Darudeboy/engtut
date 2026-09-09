@@ -31,6 +31,7 @@ class Settings:
     max_new_words_per_day: int = 15
     review_words_per_session: int = 5
     daily_goal_minutes: int = 15
+    app_timezone: str = "Europe/Moscow"
 
 
 def get_settings() -> Settings:
@@ -51,4 +52,5 @@ def get_settings() -> Settings:
         new_words_per_day=int(os.getenv("NEW_WORDS_PER_BATCH", "5")),
         max_new_words_per_day=int(os.getenv("MAX_NEW_WORDS_PER_DAY", "15")),
         review_words_per_session=int(os.getenv("REVIEW_WORDS_PER_SESSION", "5")),
+        app_timezone=os.getenv("APP_TIMEZONE", "Europe/Moscow"),
     )

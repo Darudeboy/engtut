@@ -19,7 +19,7 @@ from bot.handlers.menu import router as menu_router
 from bot.handlers.onboarding import router as onboarding_router
 from bot.handlers.progress import router as progress_router
 from bot.handlers.reading import router as reading_router
-from bot.handlers.tutor import router as tutor_router
+from bot.handlers.tutor import privacy_router, router as tutor_router
 from bot.handlers.vocabulary import router as vocabulary_router
 from bot.handlers.writing import router as writing_router
 from bot.main import create_bot
@@ -61,6 +61,7 @@ def _public_url() -> str:
 
 def create_dispatcher() -> Dispatcher:
     dispatcher = Dispatcher(storage=MemoryStorage())
+    dispatcher.include_router(privacy_router)
     dispatcher.include_router(onboarding_router)
     dispatcher.include_router(daily_router)
     dispatcher.include_router(exam_router)
@@ -96,7 +97,11 @@ def create_app() -> web.Application:
 
     bot = create_bot(settings)
     dispatcher = create_dispatcher()
-    reminders = ReminderService(app_context.db, bot)
+    reminders = ReminderService(
+        app_context.db,
+        bot,
+        settings.app_timezone,
+    )
     webhook_path = _webhook_path()
     webhook_secret = _webhook_secret(settings.bot_token)
     webhook_url = f"{public_url}{webhook_path}"
