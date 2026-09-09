@@ -344,6 +344,82 @@ class DeepSeekService:
                 f"и прошёл(ла) {stats.get('lessons_completed', 0)} уроков. Продолжай в том же духе!"
             )
 
+    async def coach_reply(
+        self,
+        learner_context: dict[str, Any],
+        history: list[dict[str, Any]],
+        user_message: str,
+    ) -> str:
+        system = (
+            "Ты персональный наставник по английскому для русскоязычного ученика. "
+            "Учитывай уровень, цель, прогресс и слабые темы из контекста. "
+            "Поддерживай естественный разговор на русском или английском. "
+            "Если ученик пишет по-английски, сначала ответь по смыслу, затем мягко "
+            "исправь максимум одну важную ошибку. Не перегружай правилами. "
+            "Предлагай один конкретный следующий шаг, когда это уместно. "
+            "Не утверждай, что запустил урок или изменил данные — это делает бот. "
+            "Ответ должен быть коротким: до 120 слов."
+        )
+        recent = [
+            {
+                "role": item.get("role", "user"),
+                "content": item.get("content", ""),
+            }
+            for item in history[-10:]
+            if item.get("role") in {"user", "assistant"}
+        ]
+        messages = [
+            {"role": "system", "content": system},
+            {
+                "role": "system",
+                "content": (
+                    "Контекст ученика: "
+                    + json.dumps(
+                        learner_context,
+                        ensure_ascii=False,
+                        default=str,
+                    )
+                ),
+            },
+            *recent,
+            {"role": "user", "content": user_message},
+        ]
+        if not self.client:
+            return self._fallback_coach_reply(learner_context, user_message)
+        try:
+            response = self.client.chat.completions.create(
+                model=self.settings.deepseek_model,
+                temperature=0.5,
+                messages=messages,
+            )
+            return response.choices[0].message.content or ""
+        except Exception as exc:
+            logger.warning("DeepSeek coach fallback: %s", exc)
+            return self._fallback_coach_reply(learner_context, user_message)
+
+    def _fallback_coach_reply(
+        self,
+        learner_context: dict[str, Any],
+        user_message: str,
+    ) -> str:
+        if re.search(r"[A-Za-z]{3,}", user_message):
+            return (
+                "Я понял твою мысль. Продолжай писать по-английски полными "
+                "короткими предложениями — так навык растёт быстрее. "
+                "Для следующей практики можно написать: «давай диалог»."
+            )
+        due = int(learner_context.get("words_due", 0) or 0)
+        if due:
+            return (
+                f"Сейчас лучше начать с повторения: у тебя {due} слов на сегодня. "
+                "Напиши «давай слова», и я открою нужный раздел."
+            )
+        return (
+            "Я рядом как наставник по английскому. Можешь задать вопрос, "
+            "написать фразу для проверки или попросить: «давай грамматику», "
+            "«покажи прогресс» или «что дальше?»."
+        )
+
     def _fallback_reading(self, topic: str, level: str = "Pre-A1") -> dict[str, Any]:
         return {
             "title": f"{topic.capitalize()} · {level}",

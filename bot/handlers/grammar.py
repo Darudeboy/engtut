@@ -135,6 +135,13 @@ async def grammar_answer(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer(f"📚 Грамматика завершена: {score}/{total} ({pct}%)")
         if await _continue_daily(callback.message, state, user_id, pct):
             return
+        from bot.handlers.tutor import send_next_step
+
+        await send_next_step(
+            callback.message,
+            user_id,
+            exclude_module="grammar",
+        )
         return
     await _send_grammar_question(callback.message, user_id)
 

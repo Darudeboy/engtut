@@ -145,9 +145,11 @@ async def continue_daily(
             f"{score_text}\n"
             f"🔥 Streak: {streak} дн.\n"
             f"🧠 Слов в изучении: {stats['words_learning']}\n"
-            f"✅ Слов освоено: {stats['words_mastered']}\n\n"
-            "Если хочется продолжить, открой «Слова» и выбери «Ещё 5 новых»."
+            f"✅ Слов освоено: {stats['words_mastered']}"
         )
+        from bot.handlers.tutor import send_next_step
+
+        await send_next_step(message, user_id)
 
 
 def _average_score(scores: dict[str, float]) -> float | None:

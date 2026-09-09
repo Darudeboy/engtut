@@ -3,7 +3,7 @@ import asyncio
 import json
 import os
 import tempfile
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from bot.config import Settings
@@ -12,6 +12,11 @@ from bot.handlers.writing import _normalize
 from bot.models.database import Database, _asyncpg_url, _postgres_query
 from bot.models.progress import ProgressRepository
 from bot.models.vocabulary import VocabularyRepository
+from bot.services.coach import (
+    build_learner_context,
+    detect_intent,
+    recommend_next_step,
+)
 from bot.services.deepseek import DeepSeekService
 from bot.utils.content import WRITING_STAGES
 from bot.utils.exam_content import EXAMS, SECTION_LABELS
@@ -37,6 +42,32 @@ async def test_database() -> None:
                 12345, "writing", "test_writing", score=70.0
             )
             assert await db.get_lesson_attempt_count(12345, "writing") == 1
+            weak_topics = await db.get_weak_topics(12345)
+            assert weak_topics[0]["module"] == "writing"
+            assert await db.has_progress_since(
+                12345,
+                "reading",
+                datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1),
+            )
+
+            await db.add_tutor_message(12345, "user", "Hello")
+            await db.add_tutor_message(12345, "assistant", "Hi!")
+            tutor_history = await db.get_recent_tutor_messages(12345)
+            assert [item["role"] for item in tutor_history] == ["user", "assistant"]
+            await db.clear_tutor_history(12345)
+            assert await db.get_recent_tutor_messages(12345) == []
+
+            assert not await db.reminder_sent_since(
+                12345,
+                "scheduled",
+                datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1),
+            )
+            await db.record_reminder_event(12345, "scheduled")
+            assert await db.reminder_sent_since(
+                12345,
+                "scheduled",
+                datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1),
+            )
 
             vocabulary = VocabularyRepository(db)
             await vocabulary.add_word(
@@ -65,6 +96,20 @@ async def test_database() -> None:
             stats = await db.get_stats(12345)
             assert stats["words_learning"] == 0
             assert stats["words_mastered"] == 1
+            context = await build_learner_context(db, 12345)
+            assert context["level"] == "Pre-A1"
+            recommendation = await recommend_next_step(
+                db,
+                12345,
+                exclude_module="writing",
+            )
+            assert recommendation["intent"] in {
+                "daily",
+                "reading",
+                "grammar",
+                "listening",
+                "dialogue",
+            }
 
             section_scores = {
                 section: {"correct": 4, "total": 5}
@@ -137,6 +182,14 @@ def test_deepseek_fallback() -> None:
         )
     )
     assert 0 <= dialogue["score"] <= 100
+    coach = asyncio.run(
+        service.coach_reply(
+            {"level": "A1", "words_due": 0},
+            [],
+            "Can we practise English?",
+        )
+    )
+    assert coach
     print("deepseek fallback: OK")
 
 
@@ -200,6 +253,14 @@ def test_writing_content() -> None:
     print(f"writing content: OK ({len(task_ids)} tasks)")
 
 
+def test_coach_intents() -> None:
+    assert detect_intent("Давай грамматику") == "grammar"
+    assert detect_intent("Покажи мой прогресс") == "progress"
+    assert detect_intent("Что мне делать дальше?") == "next"
+    assert detect_intent("Как прошёл твой день?") is None
+    print("coach intents: OK")
+
+
 def test_webhook_secret() -> None:
     original = os.environ.get("WEBHOOK_SECRET")
     try:
@@ -235,6 +296,7 @@ if __name__ == "__main__":
     test_wordlists()
     test_exam_content()
     test_writing_content()
+    test_coach_intents()
     test_webhook_secret()
     test_postgres_compatibility_helpers()
     test_deepseek_fallback()

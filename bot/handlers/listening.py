@@ -137,6 +137,13 @@ async def listening_answer(callback: CallbackQuery, state: FSMContext) -> None:
             f"Для дополнительной практики: {resource['title']}\n{resource['url']}",
             parse_mode=None,
         )
+        from bot.handlers.tutor import send_next_step
+
+        await send_next_step(
+            callback.message,
+            user_id,
+            exclude_module="listening",
+        )
         return
     await _send_listening_question(callback.message, user_id)
 

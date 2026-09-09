@@ -129,7 +129,15 @@ async def writing_answer(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer(
         msg
-        + "\n\nСледующий заход в «Письмо» даст новое задание текущего этапа."
+        + "\n\nСледующий заход в «Письмо» даст новое задание текущего этапа.",
+        parse_mode="HTML",
+    )
+    from bot.handlers.tutor import send_next_step
+
+    await send_next_step(
+        message,
+        user_id,
+        exclude_module="writing",
     )
 
 

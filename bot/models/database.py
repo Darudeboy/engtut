@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -73,6 +73,28 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
+
+CREATE TABLE IF NOT EXISTS tutor_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    role TEXT,
+    content TEXT,
+    intent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tutor_messages_user_created
+ON tutor_messages(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS reminder_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    reminder_type TEXT,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_events_user_type
+ON reminder_events(user_id, reminder_type, sent_at);
 
 CREATE TABLE IF NOT EXISTS dialogues (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,6 +186,28 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
+
+CREATE TABLE IF NOT EXISTS tutor_messages (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT,
+    role TEXT,
+    content TEXT,
+    intent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tutor_messages_user_created
+ON tutor_messages(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS reminder_events (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT,
+    reminder_type TEXT,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_events_user_type
+ON reminder_events(user_id, reminder_type, sent_at);
 
 CREATE TABLE IF NOT EXISTS dialogues (
     id BIGSERIAL PRIMARY KEY,
@@ -356,7 +400,14 @@ class Database:
             INSERT INTO progress (user_id, module, lesson_id, completed, score, completed_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (user_id, module, lesson_id, int(completed), score, datetime.utcnow()),
+            (
+                user_id,
+                module,
+                lesson_id,
+                int(completed),
+                score,
+                datetime.now(UTC).replace(tzinfo=None),
+            ),
         )
 
     async def get_stats(self, user_id: int) -> dict[str, Any]:
@@ -485,6 +536,111 @@ class Database:
             (user_id, module),
         )
         return int(row["cnt"]) if row else 0
+
+    async def add_tutor_message(
+        self,
+        user_id: int,
+        role: str,
+        content: str,
+        intent: str | None = None,
+    ) -> None:
+        await self.execute(
+            """
+            INSERT INTO tutor_messages (user_id, role, content, intent)
+            VALUES (?, ?, ?, ?)
+            """,
+            (user_id, role, content, intent),
+        )
+
+    async def get_recent_tutor_messages(
+        self,
+        user_id: int,
+        limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        rows = await self.fetchall(
+            """
+            SELECT role, content, intent, created_at
+            FROM tutor_messages
+            WHERE user_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
+        return [dict(row) for row in reversed(rows)]
+
+    async def clear_tutor_history(self, user_id: int) -> None:
+        await self.execute(
+            "DELETE FROM tutor_messages WHERE user_id = ?",
+            (user_id,),
+        )
+
+    async def get_weak_topics(
+        self,
+        user_id: int,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        rows = await self.fetchall(
+            """
+            SELECT module, lesson_id, AVG(score) AS avg_score, COUNT(*) AS attempts
+            FROM progress
+            WHERE user_id = ?
+              AND completed = 1
+              AND score IS NOT NULL
+              AND module IN ('reading', 'grammar', 'writing', 'listening', 'dialogue')
+            GROUP BY module, lesson_id
+            HAVING AVG(score) < 75
+            ORDER BY avg_score ASC, attempts DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
+        return [dict(row) for row in rows]
+
+    async def has_progress_since(
+        self,
+        user_id: int,
+        module: str,
+        since: datetime,
+    ) -> bool:
+        row = await self.fetchone(
+            """
+            SELECT id FROM progress
+            WHERE user_id = ? AND module = ? AND completed_at >= ?
+            LIMIT 1
+            """,
+            (user_id, module, since),
+        )
+        return row is not None
+
+    async def reminder_sent_since(
+        self,
+        user_id: int,
+        reminder_type: str,
+        since: datetime,
+    ) -> bool:
+        row = await self.fetchone(
+            """
+            SELECT id FROM reminder_events
+            WHERE user_id = ? AND reminder_type = ? AND sent_at >= ?
+            LIMIT 1
+            """,
+            (user_id, reminder_type, since),
+        )
+        return row is not None
+
+    async def record_reminder_event(
+        self,
+        user_id: int,
+        reminder_type: str,
+    ) -> None:
+        await self.execute(
+            """
+            INSERT INTO reminder_events (user_id, reminder_type)
+            VALUES (?, ?)
+            """,
+            (user_id, reminder_type),
+        )
 
     async def get_cache(self, cache_key: str) -> dict[str, Any] | None:
         row = await self.fetchone("SELECT payload FROM exercise_cache WHERE cache_key = ?", (cache_key,))

@@ -237,5 +237,16 @@ async def _complete_dialogue(event, state: FSMContext) -> None:
     if isinstance(event, CallbackQuery):
         await event.message.answer(feedback, parse_mode=None)
         await event.answer()
+        followup_message = event.message
     elif isinstance(event, Message):
         await event.answer(feedback, parse_mode=None)
+        followup_message = event
+    else:
+        return
+    from bot.handlers.tutor import send_next_step
+
+    await send_next_step(
+        followup_message,
+        user_id,
+        exclude_module="dialogue",
+    )

@@ -135,7 +135,13 @@ async def reading_answer(callback: CallbackQuery, state: FSMContext) -> None:
         )
         if await _continue_daily(callback.message, state, user_id, pct):
             return
-        await callback.message.answer("Можешь выбрать следующее занятие в меню.")
+        from bot.handlers.tutor import send_next_step
+
+        await send_next_step(
+            callback.message,
+            user_id,
+            exclude_module="reading",
+        )
         return
     await _send_question(callback.message, user_id)
 

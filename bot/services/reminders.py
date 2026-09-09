@@ -1,10 +1,11 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from bot.models.database import Database
+from bot.services.coach import personalized_reminder_text, recommend_next_step
 
 logger = logging.getLogger(__name__)
 
@@ -27,18 +28,29 @@ class ReminderService:
 
     async def send_reminders(self) -> None:
         now = datetime.now().strftime("%H:%M")
+        utc_now = datetime.now(UTC).replace(tzinfo=None)
+        today_start = datetime.combine(utc_now.date(), datetime.min.time())
         rows = await self.db.fetchall(
             "SELECT user_id, reminder_time FROM users WHERE reminder_time = ? AND onboarding_completed = 1",
             (now,),
         )
         for row in rows:
+            user_id = int(row["user_id"])
+            if await self.db.reminder_sent_since(
+                user_id,
+                "scheduled",
+                today_start,
+            ):
+                continue
             try:
+                text = await personalized_reminder_text(self.db, user_id)
                 await self.bot.send_message(
-                    row["user_id"],
-                    "⏰ Время для короткого урока английского! Нажми /daily 🌟",
+                    user_id,
+                    text,
                 )
+                await self.db.record_reminder_event(user_id, "scheduled")
             except Exception as exc:
-                logger.warning("Failed to send reminder to %s: %s", row["user_id"], exc)
+                logger.warning("Failed to send reminder to %s: %s", user_id, exc)
 
     async def send_inactivity_reminders(self) -> None:
         inactive_since = date.today() - timedelta(days=2)
@@ -52,10 +64,20 @@ class ReminderService:
             (inactive_since,),
         )
         for row in rows:
+            user_id = int(row["user_id"])
+            if await self.db.reminder_sent_since(
+                user_id,
+                "inactivity",
+                datetime.now(UTC).replace(tzinfo=None) - timedelta(days=3),
+            ):
+                continue
             try:
+                recommendation = await recommend_next_step(self.db, user_id)
                 await self.bot.send_message(
-                    row["user_id"],
-                    "👋 Давно не виделись! Даже 10 минут в день помогают. Попробуй /daily",
+                    user_id,
+                    "👋 Давно не виделись! Даже короткая практика помогает.\n\n"
+                    + recommendation["text"],
                 )
+                await self.db.record_reminder_event(user_id, "inactivity")
             except Exception as exc:
-                logger.warning("Failed to send inactivity reminder to %s: %s", row["user_id"], exc)
+                logger.warning("Failed to send inactivity reminder to %s: %s", user_id, exc)

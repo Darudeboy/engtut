@@ -19,6 +19,7 @@ from bot.handlers.menu import router as menu_router
 from bot.handlers.onboarding import router as onboarding_router
 from bot.handlers.progress import router as progress_router
 from bot.handlers.reading import router as reading_router
+from bot.handlers.tutor import router as tutor_router
 from bot.handlers.vocabulary import router as vocabulary_router
 from bot.handlers.writing import router as writing_router
 from bot.services.reminders import ReminderService
@@ -67,6 +68,7 @@ async def main() -> None:
     dp.include_router(dialogue_router)
     dp.include_router(listening_router)
     dp.include_router(progress_router)
+    dp.include_router(tutor_router)
 
     reminders = ReminderService(app_context.db, bot)
     await reminders.start()
