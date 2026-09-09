@@ -159,7 +159,7 @@ async def personalized_reminder_text(db: Database, user_id: int) -> str:
     recommendation = await recommend_next_step(db, user_id)
     level = user.get("level", "Pre-A1")
     return (
-        f"⏰ Время для английского. Твой уровень: {level}.\n\n"
+        f"⏰ Пора заниматься! Твой уровень: {level}.\n\n"
         f"{recommendation['text']}"
     )
 

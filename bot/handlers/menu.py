@@ -1,9 +1,13 @@
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from bot.utils.context import get_app_context
-from bot.utils.keyboards import main_menu_keyboard
+from bot.utils.keyboards import (
+    main_menu_keyboard,
+    reminder_keyboard,
+    settings_keyboard,
+)
 
 router = Router()
 
@@ -18,9 +22,40 @@ async def settings(message: Message, state: FSMContext) -> None:
         f"Уровень: {profile.level}\n"
         f"Цель: {profile.goal or 'не указана'}\n"
         f"Напоминание: {user.get('reminder_time') or 'выключено'}\n"
-        f"Цель по времени: {user.get('daily_goal_minutes', 15)} мин/день\n\n"
-        "Чтобы изменить напоминание, отправь /start и пройди настройку заново."
+        f"Цель по времени: {user.get('daily_goal_minutes', 15)} мин/день",
+        reply_markup=settings_keyboard(),
     )
+
+
+@router.callback_query(F.data == "settings:reminder")
+async def choose_reminder_time(callback: CallbackQuery) -> None:
+    ctx = get_app_context()
+    await callback.message.edit_text(
+        "⏰ Когда ежедневно напоминать о занятиях?\n\n"
+        f"Время указано для часового пояса {ctx.settings.app_timezone}.",
+        reply_markup=reminder_keyboard("settings:reminder"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("settings:reminder:"))
+async def save_reminder_time(callback: CallbackQuery) -> None:
+    ctx = get_app_context()
+    value = callback.data.removeprefix("settings:reminder:")
+    reminder_time = None if value == "none" else value
+    await ctx.db.update_user(
+        callback.from_user.id,
+        reminder_time=reminder_time,
+    )
+    if reminder_time:
+        text = (
+            "✅ Напоминание включено.\n\n"
+            f"Каждый день в {reminder_time} я напишу: «Пора заниматься!»"
+        )
+    else:
+        text = "🔕 Напоминания выключены."
+    await callback.message.edit_text(text)
+    await callback.answer()
 
 
 @router.message(F.text.in_({"🏠 Меню", "Меню"}))

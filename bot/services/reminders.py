@@ -31,8 +31,18 @@ class ReminderService:
         self.scheduler = AsyncIOScheduler(timezone=self.timezone)
 
     async def start(self) -> None:
-        self.scheduler.add_job(self.send_reminders, CronTrigger(minute="*/30"))
-        self.scheduler.add_job(self.send_inactivity_reminders, CronTrigger(hour=10, minute=0))
+        self.scheduler.add_job(
+            self.send_reminders,
+            CronTrigger(minute="*/5"),
+            id="scheduled-reminders",
+            replace_existing=True,
+        )
+        self.scheduler.add_job(
+            self.send_inactivity_reminders,
+            CronTrigger(hour=10, minute=0),
+            id="inactivity-reminders",
+            replace_existing=True,
+        )
         self.scheduler.start()
         logger.info("Reminder scheduler started")
 
@@ -41,11 +51,24 @@ class ReminderService:
             self.scheduler.shutdown(wait=False)
 
     async def send_reminders(self) -> None:
-        now = datetime.now(self.timezone).strftime("%H:%M")
-        utc_now = datetime.now(UTC).replace(tzinfo=None)
-        today_start = datetime.combine(utc_now.date(), datetime.min.time())
+        local_now = datetime.now(self.timezone)
+        now = local_now.strftime("%H:%M")
+        today_start = (
+            datetime.combine(
+                local_now.date(),
+                datetime.min.time(),
+                tzinfo=self.timezone,
+            )
+            .astimezone(UTC)
+            .replace(tzinfo=None)
+        )
         rows = await self.db.fetchall(
-            "SELECT user_id, reminder_time FROM users WHERE reminder_time = ? AND onboarding_completed = 1",
+            """
+            SELECT user_id, reminder_time FROM users
+            WHERE reminder_time IS NOT NULL
+              AND reminder_time <= ?
+              AND onboarding_completed = 1
+            """,
             (now,),
         )
         for row in rows:

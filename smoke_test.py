@@ -15,11 +15,13 @@ from bot.models.vocabulary import VocabularyRepository
 from bot.services.coach import (
     build_learner_context,
     detect_intent,
+    personalized_reminder_text,
     recommend_next_step,
 )
 from bot.services.deepseek import DeepSeekService
 from bot.utils.content import WRITING_STAGES
 from bot.utils.exam_content import EXAMS, SECTION_LABELS
+from bot.utils.keyboards import reminder_keyboard
 from bot.utils.releases import BOT_COMMANDS, CURRENT_RELEASE_ID, CURRENT_RELEASE_TEXT
 from bot.webhook import _webhook_secret
 
@@ -31,6 +33,13 @@ async def test_database() -> None:
         try:
             user = await db.get_or_create_user(12345, "smoke_test")
             assert user["user_id"] == 12345
+            await db.update_user(
+                12345,
+                reminder_time="18:00",
+                onboarding_completed=1,
+            )
+            user = await db.get_or_create_user(12345)
+            assert user["reminder_time"] == "18:00"
 
             progress = ProgressRepository(db)
             await progress.record_lesson(
@@ -130,6 +139,8 @@ async def test_database() -> None:
                 "listening",
                 "dialogue",
             }
+            reminder_text = await personalized_reminder_text(db, 12345)
+            assert reminder_text.startswith("⏰ Пора заниматься!")
 
             section_scores = {
                 section: {"correct": 4, "total": 5}
@@ -301,6 +312,19 @@ def test_release_notes() -> None:
     print("release notes: OK")
 
 
+def test_reminder_keyboard() -> None:
+    keyboard = reminder_keyboard("settings:reminder")
+    callbacks = [
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+    assert "settings:reminder:08:00" in callbacks
+    assert "settings:reminder:20:00" in callbacks
+    assert callbacks[-1] == "settings:reminder:none"
+    print("reminder keyboard: OK")
+
+
 def test_webhook_secret() -> None:
     original = os.environ.get("WEBHOOK_SECRET")
     try:
@@ -338,6 +362,7 @@ if __name__ == "__main__":
     test_writing_content()
     test_coach_intents()
     test_release_notes()
+    test_reminder_keyboard()
     test_webhook_secret()
     test_postgres_compatibility_helpers()
     test_deepseek_fallback()

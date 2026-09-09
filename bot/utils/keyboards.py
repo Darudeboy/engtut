@@ -77,11 +77,41 @@ def scenario_keyboard(
     )
 
 
-def reminder_keyboard() -> InlineKeyboardMarkup:
+def reminder_keyboard(
+    callback_prefix: str = "onboard:reminder",
+) -> InlineKeyboardMarkup:
     times = ["08:00", "12:00", "18:00", "20:00"]
-    rows = [[InlineKeyboardButton(text=t, callback_data=f"onboard:reminder:{t}")] for t in times]
-    rows.append([InlineKeyboardButton(text="Без напоминаний", callback_data="onboard:reminder:none")])
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=t,
+                callback_data=f"{callback_prefix}:{t}",
+            )
+        ]
+        for t in times
+    ]
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Без напоминаний",
+                callback_data=f"{callback_prefix}:none",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⏰ Изменить напоминание",
+                    callback_data="settings:reminder",
+                )
+            ]
+        ]
+    )
 
 
 def goal_keyboard() -> InlineKeyboardMarkup:

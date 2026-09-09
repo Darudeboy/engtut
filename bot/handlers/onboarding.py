@@ -85,7 +85,7 @@ async def choose_goal(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(OnboardingStates.reminder, F.data.startswith("onboard:reminder:"))
 async def choose_reminder(callback: CallbackQuery, state: FSMContext) -> None:
     ctx = get_app_context()
-    reminder = callback.data.split(":")[-1]
+    reminder = callback.data.removeprefix("onboard:reminder:")
     reminder_time = None if reminder == "none" else reminder
     data = await state.get_data()
     user_id = callback.from_user.id
