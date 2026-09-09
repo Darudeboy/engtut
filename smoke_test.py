@@ -20,6 +20,7 @@ from bot.services.coach import (
 from bot.services.deepseek import DeepSeekService
 from bot.utils.content import WRITING_STAGES
 from bot.utils.exam_content import EXAMS, SECTION_LABELS
+from bot.utils.releases import BOT_COMMANDS, CURRENT_RELEASE_ID, CURRENT_RELEASE_TEXT
 from bot.webhook import _webhook_secret
 
 
@@ -83,6 +84,10 @@ async def test_database() -> None:
                 "scheduled",
                 datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1),
             )
+            assert not await db.has_seen_release(12345, CURRENT_RELEASE_ID)
+            await db.mark_release_seen(12345, CURRENT_RELEASE_ID)
+            await db.mark_release_seen(12345, CURRENT_RELEASE_ID)
+            assert await db.has_seen_release(12345, CURRENT_RELEASE_ID)
 
             vocabulary = VocabularyRepository(db)
             await vocabulary.add_word(
@@ -279,6 +284,23 @@ def test_coach_intents() -> None:
     print("coach intents: OK")
 
 
+def test_release_notes() -> None:
+    commands = [item.command for item in BOT_COMMANDS]
+    assert commands == [
+        "start",
+        "daily",
+        "exam",
+        "stats",
+        "whatsnew",
+        "forget",
+        "help",
+    ]
+    assert len(commands) == len(set(commands))
+    assert CURRENT_RELEASE_ID
+    assert "AI-наставник" in CURRENT_RELEASE_TEXT
+    print("release notes: OK")
+
+
 def test_webhook_secret() -> None:
     original = os.environ.get("WEBHOOK_SECRET")
     try:
@@ -315,6 +337,7 @@ if __name__ == "__main__":
     test_exam_content()
     test_writing_content()
     test_coach_intents()
+    test_release_notes()
     test_webhook_secret()
     test_postgres_compatibility_helpers()
     test_deepseek_fallback()

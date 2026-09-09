@@ -19,12 +19,17 @@ from bot.handlers.menu import router as menu_router
 from bot.handlers.onboarding import router as onboarding_router
 from bot.handlers.progress import router as progress_router
 from bot.handlers.reading import router as reading_router
+from bot.handlers.release_notes import (
+    ReleaseNotesMiddleware,
+    router as release_notes_router,
+)
 from bot.handlers.tutor import privacy_router, router as tutor_router
 from bot.handlers.vocabulary import router as vocabulary_router
 from bot.handlers.writing import router as writing_router
 from bot.main import create_bot
 from bot.services.reminders import ReminderService
 from bot.utils.context import AppContext, set_app_context
+from bot.utils.releases import BOT_COMMANDS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,7 +66,9 @@ def _public_url() -> str:
 
 def create_dispatcher() -> Dispatcher:
     dispatcher = Dispatcher(storage=MemoryStorage())
+    dispatcher.message.outer_middleware(ReleaseNotesMiddleware())
     dispatcher.include_router(privacy_router)
+    dispatcher.include_router(release_notes_router)
     dispatcher.include_router(onboarding_router)
     dispatcher.include_router(daily_router)
     dispatcher.include_router(exam_router)
@@ -108,6 +115,8 @@ def create_app() -> web.Application:
 
     async def on_startup() -> None:
         await app_context.db.connect()
+        await bot.set_my_commands(BOT_COMMANDS)
+        await bot.set_my_commands(BOT_COMMANDS, language_code="ru")
         await reminders.start()
         await bot.set_webhook(
             webhook_url,

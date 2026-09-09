@@ -96,6 +96,14 @@ CREATE TABLE IF NOT EXISTS reminder_events (
 CREATE INDEX IF NOT EXISTS idx_reminder_events_user_type
 ON reminder_events(user_id, reminder_type, sent_at);
 
+CREATE TABLE IF NOT EXISTS release_views (
+    user_id INTEGER,
+    release_id TEXT,
+    viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, release_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
 CREATE TABLE IF NOT EXISTS dialogues (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -208,6 +216,14 @@ CREATE TABLE IF NOT EXISTS reminder_events (
 );
 CREATE INDEX IF NOT EXISTS idx_reminder_events_user_type
 ON reminder_events(user_id, reminder_type, sent_at);
+
+CREATE TABLE IF NOT EXISTS release_views (
+    user_id BIGINT,
+    release_id TEXT,
+    viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, release_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
 
 CREATE TABLE IF NOT EXISTS dialogues (
     id BIGSERIAL PRIMARY KEY,
@@ -653,6 +669,26 @@ class Database:
             VALUES (?, ?)
             """,
             (user_id, reminder_type),
+        )
+
+    async def has_seen_release(self, user_id: int, release_id: str) -> bool:
+        row = await self.fetchone(
+            """
+            SELECT user_id FROM release_views
+            WHERE user_id = ? AND release_id = ?
+            """,
+            (user_id, release_id),
+        )
+        return row is not None
+
+    async def mark_release_seen(self, user_id: int, release_id: str) -> None:
+        await self.execute(
+            """
+            INSERT INTO release_views (user_id, release_id)
+            VALUES (?, ?)
+            ON CONFLICT(user_id, release_id) DO NOTHING
+            """,
+            (user_id, release_id),
         )
 
     async def get_cache(self, cache_key: str) -> dict[str, Any] | None:

@@ -19,11 +19,16 @@ from bot.handlers.menu import router as menu_router
 from bot.handlers.onboarding import router as onboarding_router
 from bot.handlers.progress import router as progress_router
 from bot.handlers.reading import router as reading_router
+from bot.handlers.release_notes import (
+    ReleaseNotesMiddleware,
+    router as release_notes_router,
+)
 from bot.handlers.tutor import privacy_router, router as tutor_router
 from bot.handlers.vocabulary import router as vocabulary_router
 from bot.handlers.writing import router as writing_router
 from bot.services.reminders import ReminderService
 from bot.utils.context import AppContext, set_app_context
+from bot.utils.releases import BOT_COMMANDS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,7 +62,9 @@ async def main() -> None:
     bot = create_bot(settings)
 
     dp = Dispatcher(storage=MemoryStorage())
+    dp.message.outer_middleware(ReleaseNotesMiddleware())
     dp.include_router(privacy_router)
+    dp.include_router(release_notes_router)
     dp.include_router(onboarding_router)
     dp.include_router(daily_router)
     dp.include_router(exam_router)
@@ -76,6 +83,8 @@ async def main() -> None:
         bot,
         settings.app_timezone,
     )
+    await bot.set_my_commands(BOT_COMMANDS)
+    await bot.set_my_commands(BOT_COMMANDS, language_code="ru")
     await reminders.start()
 
     logger.info("English Tutor Bot started")
